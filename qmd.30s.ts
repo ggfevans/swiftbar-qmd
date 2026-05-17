@@ -9,9 +9,11 @@
 // <swiftbar.abouturl>https://github.com/ggfevans/swiftbar-qmd</swiftbar.abouturl>
 
 import { loadConfig } from "./lib/config.ts";
+import { detectFirstRunState } from "./lib/detect.ts";
 
 async function main(): Promise<void> {
-  const _loaded = await loadConfig();
+  const { config } = await loadConfig();
+  const _firstRun = await detectFirstRunState(config);
   console.log("🟢");
   console.log("---");
   console.log("swiftbar-qmd v0.1.0 | size=12 color=#8a8a8e shell=");
