@@ -107,7 +107,8 @@ export type ActionId =
   | "stop-daemon"
   | "start-daemon"
   | "cleanup"
-  | "recheck";
+  | "recheck"
+  | "show-context";
 
 // ─── Snapshot (persisted) ─────────────────────────────────────
 

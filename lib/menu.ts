@@ -1,4 +1,5 @@
 import type {
+  ActionId,
   CollectionState,
   Config,
   CurrentState,
@@ -261,17 +262,23 @@ function renderStatusSection(state: CurrentState, config: Config): string[] {
   return lines;
 }
 
-/** Renders the Collections section as flat rows (one per collection). */
+// Collection names that go into shell arguments must match this. Anything
+// outside the set is rejected (no submenu actions emitted) and logged.
+// Matches qmd's own collection name conventions: alnum, dot, underscore,
+// dash. No slashes, spaces, or shell metacharacters.
+const SAFE_COLLECTION_NAME = /^[A-Za-z0-9_.-]+$/;
+
+/** Renders the Collections section: parent row + submenu per collection. */
 function renderCollectionsSection(
   state: CurrentState,
   config: Config,
+  pluginPath: string,
 ): string[] {
   const lines: string[] = [];
   lines.push(
     `Collections (${state.collections.length}) | size=10 color=${MUTED_HEX} shell=`,
   );
 
-  // (deferred to step 10: per-collection submenus + ▸ indicator)
   for (const c of state.collections) {
     const tier = collectionTier(c, config, state.polledAt);
     const color = TIER_HEX[tier];
@@ -279,13 +286,156 @@ function renderCollectionsSection(
     const freshness = c.lastModified
       ? compactDuration(state.polledAt.getTime() - c.lastModified.getTime())
       : "?";
+
+    // Parent row: append "▸" after the freshness so the submenu indicator
+    // sits flush with the text content. The pad width stays at
+    // DAEMON_ROW_LENGTH but the right side now includes " ▸".
     const left = `● ${c.name}`;
-    const right = `${docCount} · ${freshness}`;
+    const right = `${docCount} · ${freshness} ▸`;
     const padded = padBetween(left, right, DAEMON_ROW_LENGTH);
+    // No `shell=` on the parent — clicking it opens the submenu naturally;
+    // SwiftBar's two-space-indent nesting (Appendix A) does the rest.
     lines.push(
-      `${padded} | color=${color} shell= length=${DAEMON_ROW_LENGTH} trim=false`,
+      `${padded} | color=${color} length=${DAEMON_ROW_LENGTH} trim=false`,
+    );
+
+    lines.push(
+      ...renderCollectionSubmenu(c, tier, config, state.polledAt, pluginPath),
     );
   }
+
+  return lines;
+}
+
+/**
+ * Render the two-space-indented submenu block for a single collection
+ * (SPEC §11). Lines are returned without a trailing newline — the caller
+ * stitches them into the menu.
+ *
+ * Order, copying SPEC §11:
+ *   header                 (collection name, muted)
+ *   <N> docs · <qmdUri>    (info)
+ *   Pattern   <pattern>    (info)
+ *   Last updated <relative>[ ⚠]   (info, warn glyph if amber-or-worse)
+ *   ---
+ *   Update this collection
+ *   Embed (new chunks only)
+ *   Force re-embed all
+ *   ---
+ *   Reveal in Finder       (direct: open <path>)
+ *   Open in Obsidian       (direct: open obsidian://… — gated by hasObsidian)
+ *   Copy collection name   (direct: printf | pbcopy)
+ *   View context…          (action: show-context)
+ *
+ * Unsafe names: emit the info block but skip every action row that takes
+ * the name as a shell arg. One-line warning to stderr (SPEC §18.1 permits
+ * `console.error` for one-off debug logging) so it shows up in SwiftBar's
+ * plugin console without dragging the file-logger into the rendering path.
+ */
+function renderCollectionSubmenu(
+  c: CollectionState,
+  tier: Tier,
+  config: Config,
+  polledAt: Date,
+  pluginPath: string,
+): string[] {
+  const INDENT = "  ";
+  const lines: string[] = [];
+
+  const safeName = SAFE_COLLECTION_NAME.test(c.name);
+  if (!safeName) {
+    // One-off debug: lands in SwiftBar's plugin console alongside any
+    // other stderr from the script; nothing else in renderMenu touches I/O.
+    console.error(
+      `swiftbar-qmd: collection name "${c.name}" contains unsafe characters; submenu actions suppressed`,
+    );
+  }
+
+  // ── Header (collection name) ──
+  lines.push(`${INDENT}${c.name} | size=10 color=${MUTED_HEX} shell=`);
+
+  // ── Info rows ──
+  const docCount = NUMBER_FORMAT.format(c.docCount);
+  lines.push(
+    `${INDENT}${docCount} docs · ${c.qmdUri} | size=11 color=${MUTED_HEX} shell=`,
+  );
+  lines.push(
+    `${INDENT}${
+      padBetween("Pattern", c.pattern, 36)
+    } | size=11 color=${MUTED_HEX} shell=`,
+  );
+
+  // "Last updated <relative>[ ⚠]"
+  const lastUpdated = c.lastModified
+    ? relativeTime(c.lastModified, polledAt)
+    : "—";
+  const warnGlyph = tier !== "green" ? " ⚠" : "";
+  lines.push(
+    `${INDENT}${
+      padBetween("Last updated", lastUpdated + warnGlyph, 36)
+    } | size=11 color=${MUTED_HEX} shell=`,
+  );
+
+  // Action rows are skipped wholesale when the name is unsafe — the
+  // info block above is enough to show the collection exists.
+  if (!safeName) return lines;
+
+  lines.push(`${INDENT}---`);
+
+  // ── Per-collection actions (go through the action runner) ──
+  const collectionAction = (label: string, actionId: ActionId): string => {
+    const parts = [
+      `bash="${pluginPath}"`,
+      `param1="--action"`,
+      `param2="${actionId}"`,
+      `param3="--collection"`,
+      `param4="${c.name}"`,
+      "terminal=false",
+      "refresh=true",
+    ];
+    return `${INDENT}${label} | ${parts.join(" ")}`;
+  };
+
+  lines.push(collectionAction("↻ Update this collection", "update-collection"));
+  lines.push(
+    collectionAction("⚡ Embed (new chunks only)", "embed-collection"),
+  );
+  lines.push(
+    collectionAction("⚡⚡ Force re-embed all", "force-reembed-collection"),
+  );
+  lines.push(`${INDENT}---`);
+
+  // ── Direct shell-outs (don't go through the action runner) ──
+  // open(1) with a single param: Reveal in Finder. `param1=` is the path;
+  // we don't quote the path inside the value because SwiftBar treats each
+  // `paramN=` value as one argument literally. The SAFE_COLLECTION_NAME
+  // regex doesn't cover the path itself — qmd controls the path, and any
+  // hostile path on disk would already be a much bigger problem than this
+  // plugin renders.
+  lines.push(
+    `${INDENT}📁 Reveal in Finder | bash="open" param1="${c.path}" terminal=false`,
+  );
+
+  const showObsidian = c.hasObsidian || !config.ui.hide_obsidian_when_absent;
+  if (showObsidian) {
+    // Render the row only when the vault is actually present, OR when the
+    // user has opted in to seeing the row regardless. The URL itself is
+    // harmless when the vault isn't installed — Obsidian simply prompts.
+    const obsidianUri = `obsidian://open?vault=${c.name}`;
+    lines.push(
+      `${INDENT}📓 Open in Obsidian | bash="open" param1="${obsidianUri}" terminal=false`,
+    );
+  }
+
+  // Copy collection name: `printf %s '<name>' | pbcopy`. Name is already
+  // validated by SAFE_COLLECTION_NAME so single-quoting is safe.
+  lines.push(
+    `${INDENT}⧉ Copy collection name | bash="bash" param1="-c" param2="printf %s '${c.name}' | pbcopy" terminal=false`,
+  );
+
+  // View context: re-invoke the plugin under --action show-context. The
+  // action handler itself is wired in step 11 as a no-op placeholder.
+  lines.push(collectionAction("ⓘ View context…", "show-context"));
 
   return lines;
 }
@@ -367,8 +517,8 @@ function renderPreferencesFooter(): string[] {
  *
  * In-flight job rendering (SPEC §10.3) and error-state fallback
  * (SPEC §10.4) are layered on top of this base in later prompts:
- *   - (deferred to step 10: per-collection submenus + ▸ indicators)
  *   - (deferred to step 12: in-flight job rewriting in Status / Actions)
+ *   - (deferred to step 13: confirmation dialogs for force-reembed/cleanup)
  *   - (deferred to step 15: error-state fallback header / footer)
  */
 export function renderMenu(
@@ -385,7 +535,7 @@ export function renderMenu(
   lines.push(...renderStatusSection(state, config));
   lines.push("---");
 
-  lines.push(...renderCollectionsSection(state, config));
+  lines.push(...renderCollectionsSection(state, config, pluginPath));
   lines.push("---");
 
   lines.push(...renderGlobalActionsSection(state, pluginPath));

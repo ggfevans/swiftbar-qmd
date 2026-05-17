@@ -77,6 +77,8 @@ function actionLabel(action: ActionId): string {
       return "Cleanup";
     case "recheck":
       return "Recheck";
+    case "show-context":
+      return "Context";
   }
 }
 
