@@ -11,6 +11,7 @@
 import { loadConfig } from "./lib/config.ts";
 import { detectFirstRunState } from "./lib/detect.ts";
 import { renderFirstRunMenu } from "./lib/menu.ts";
+import { ensureCacheTree, readSnapshot } from "./lib/persistence.ts";
 
 async function main(): Promise<void> {
   const { config } = await loadConfig();
@@ -19,6 +20,13 @@ async function main(): Promise<void> {
     console.log(renderFirstRunMenu(firstRun, config));
     Deno.exit(0);
   }
+  // Persistence layer (step 6). Ensures cache dir tree exists and
+  // loads the last snapshot for the upcoming state-reader/rollup
+  // steps; the result is intentionally discarded here.
+  await ensureCacheTree();
+  const _lastSnapshot = await readSnapshot();
+  void _lastSnapshot;
+
   // (deferred to step 9: replace this hardcoded placeholder with the
   // full §10 healthy menu once snapshot/rollup/render helpers exist)
   console.log("🟢");
