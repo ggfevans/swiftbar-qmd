@@ -8,8 +8,10 @@
 // <swiftbar.dependencies>deno,qmd</swiftbar.dependencies>
 // <swiftbar.abouturl>https://github.com/ggfevans/swiftbar-qmd</swiftbar.abouturl>
 
-// deno-lint-ignore require-await
+import { loadConfig } from "./lib/config.ts";
+
 async function main(): Promise<void> {
+  const _loaded = await loadConfig();
   console.log("🟢");
   console.log("---");
   console.log("swiftbar-qmd v0.1.0 | size=12 color=#8a8a8e shell=");
