@@ -6,7 +6,14 @@
     "check": "deno check qmd.30s.ts lib/**/*.ts tests/**/*.ts"
   },
   "fmt": {
-    "exclude": ["docs/", ".github/", "session-report.md", "blockers.md"]
+    "exclude": [
+      "docs/",
+      ".github/",
+      "README.md",
+      "AGENTS.md",
+      "session-report.md",
+      "blockers.md"
+    ]
   },
   "lint": {
     "exclude": ["docs/", ".github/"]
