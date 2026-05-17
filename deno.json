@@ -5,6 +5,12 @@
     "lint": "deno lint",
     "check": "deno check qmd.30s.ts lib/**/*.ts tests/**/*.ts"
   },
+  "fmt": {
+    "exclude": ["docs/", ".github/", "session-report.md", "blockers.md"]
+  },
+  "lint": {
+    "exclude": ["docs/", ".github/"]
+  },
   "imports": {
     "@std/yaml": "jsr:@std/yaml@^1",
     "@std/path": "jsr:@std/path@^1",
