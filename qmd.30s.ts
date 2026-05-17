@@ -10,10 +10,17 @@
 
 import { loadConfig } from "./lib/config.ts";
 import { detectFirstRunState } from "./lib/detect.ts";
+import { renderFirstRunMenu } from "./lib/menu.ts";
 
 async function main(): Promise<void> {
   const { config } = await loadConfig();
-  const _firstRun = await detectFirstRunState(config);
+  const firstRun = await detectFirstRunState(config);
+  if (firstRun !== "ok") {
+    console.log(renderFirstRunMenu(firstRun, config));
+    Deno.exit(0);
+  }
+  // (deferred to step 9: replace this hardcoded placeholder with the
+  // full §10 healthy menu once snapshot/rollup/render helpers exist)
   console.log("🟢");
   console.log("---");
   console.log("swiftbar-qmd v0.1.0 | size=12 color=#8a8a8e shell=");
