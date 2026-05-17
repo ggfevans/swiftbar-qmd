@@ -7,6 +7,7 @@ Design and decision artifacts for swiftbar-qmd. The implementation lives at the 
 | [`SPEC.md`](SPEC.md) | The locked v1 specification. Canonical implementation reference. | Developer starting work |
 | [`DECISIONS.md`](DECISIONS.md) | Per-decision rationale for the 16 architectural choices, with alternatives considered. | Anyone reconsidering a choice |
 | [`RESEARCH.md`](RESEARCH.md) | Background research that informed the design — existing tooling survey, Bun rewrite findings, SwiftBar conventions, qmd architecture. | Anyone validating an assumption |
+| [`PROMPTS.md`](PROMPTS.md) | 17-step implementation blueprint with one code-gen prompt per step. Each prompt builds on the previous and ends with wiring. | Coding LLM, or anyone doing the implementation |
 
 ## Reading order
 
