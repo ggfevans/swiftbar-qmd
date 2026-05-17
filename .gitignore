@@ -1,0 +1,3 @@
+/node_modules
+/.deno_cache
+*.log
