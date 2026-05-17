@@ -1,4 +1,5 @@
 import type { Config, FirstRunState } from "./types.ts";
+import { withTimeout } from "./time.ts";
 
 // ─── Probe contract ────────────────────────────────────────────
 
@@ -18,32 +19,6 @@ export type Probes = {
     path: string,
   ) => Promise<Array<{ name: string; doc_count: number }>>;
 };
-
-// ─── Inline withTimeout (lifted to lib/time.ts in step 5) ──────
-
-/**
- * Resolve `p` within `ms` milliseconds. Rejects with a timeout Error
- * otherwise. Caller handles rejection (cascade rules per SPEC §5.2).
- *
- * (deferred to step 5: extract to lib/time.ts per PROMPTS.md)
- */
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error(`timeout after ${ms}ms`));
-    }, ms);
-    p.then(
-      (v) => {
-        clearTimeout(timer);
-        resolve(v);
-      },
-      (e) => {
-        clearTimeout(timer);
-        reject(e instanceof Error ? e : new Error(String(e)));
-      },
-    );
-  });
-}
 
 // ─── Production probes ─────────────────────────────────────────
 
@@ -139,6 +114,7 @@ export async function detectFirstRunState(
       hasBinary = await withTimeout(
         probes.hasQmdBinary(),
         PER_CHECK_TIMEOUT_MS,
+        "hasQmdBinary",
       );
     } catch {
       return "no-qmd";
@@ -151,6 +127,7 @@ export async function detectFirstRunState(
       canImport = await withTimeout(
         probes.canImportSdk(),
         PER_CHECK_TIMEOUT_MS,
+        "canImportSdk",
       );
     } catch {
       return "no-qmd";
@@ -163,6 +140,7 @@ export async function detectFirstRunState(
       indexPresent = await withTimeout(
         probes.indexExists(config.qmd.index_path),
         PER_CHECK_TIMEOUT_MS,
+        "indexExists",
       );
     } catch {
       return "no-collections";
@@ -175,6 +153,7 @@ export async function detectFirstRunState(
       collections = await withTimeout(
         probes.listCollections(config.qmd.index_path),
         PER_CHECK_TIMEOUT_MS,
+        "listCollections",
       );
     } catch {
       return "no-collections";
