@@ -10,18 +10,10 @@
 
 import { loadConfig } from "./lib/config.ts";
 import { detectFirstRunState } from "./lib/detect.ts";
-import { renderFirstRunMenu } from "./lib/menu.ts";
+import { renderFirstRunMenu, renderMenu } from "./lib/menu.ts";
 import { ensureCacheTree, readSnapshot } from "./lib/persistence.ts";
 import { readCurrentState } from "./lib/state.ts";
 import { computeTierWithReason } from "./lib/rollup.ts";
-import type { Tier } from "./lib/types.ts";
-
-const TIER_EMOJI: Record<Tier, string> = {
-  green: "🟢",
-  amber: "🟡",
-  red: "🔴",
-  grey: "⚪",
-};
 
 async function main(): Promise<void> {
   const { config } = await loadConfig();
@@ -40,18 +32,13 @@ async function main(): Promise<void> {
   // single CurrentState.
   const state = await readCurrentState(config);
 
-  // Rollup (step 8). Compute the tier from current state; the icon
-  // line below now reflects real qmd health.
+  // Rollup (step 8). Compute the tier from current state.
   const tier = computeTierWithReason(state, config);
 
-  // (deferred to step 9: replace the rest of this hardcoded placeholder
-  // with the full §10 healthy menu once render helpers exist)
-  console.log(TIER_EMOJI[tier.tier]);
-  console.log("---");
-  console.log("swiftbar-qmd v0.1.0 | size=12 color=#8a8a8e shell=");
-  console.log(
-    'Show planning docs | bash="open" param1="https://github.com/ggfevans/swiftbar-qmd" terminal=false',
-  );
+  // Render the §10 healthy menu (step 9). In-flight rewriting,
+  // per-collection submenus, and error-state fallback layer on top
+  // of this in steps 10 / 12 / 15.
+  console.log(renderMenu(state, tier, config));
   Deno.exit(0);
 }
 
