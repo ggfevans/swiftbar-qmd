@@ -12,6 +12,7 @@ import { loadConfig } from "./lib/config.ts";
 import { detectFirstRunState } from "./lib/detect.ts";
 import { renderFirstRunMenu } from "./lib/menu.ts";
 import { ensureCacheTree, readSnapshot } from "./lib/persistence.ts";
+import { readCurrentState } from "./lib/state.ts";
 
 async function main(): Promise<void> {
   const { config } = await loadConfig();
@@ -21,11 +22,16 @@ async function main(): Promise<void> {
     Deno.exit(0);
   }
   // Persistence layer (step 6). Ensures cache dir tree exists and
-  // loads the last snapshot for the upcoming state-reader/rollup
-  // steps; the result is intentionally discarded here.
+  // loads the last snapshot for the upcoming rollup step.
   await ensureCacheTree();
   const _lastSnapshot = await readSnapshot();
   void _lastSnapshot;
+
+  // State reader (step 7). Composes SDK, HTTP, and FS sources into a
+  // single CurrentState. Step 8 will compute the tier from it; step 9
+  // will render the menu from it.
+  const _state = await readCurrentState(config);
+  void _state;
 
   // (deferred to step 9: replace this hardcoded placeholder with the
   // full §10 healthy menu once snapshot/rollup/render helpers exist)
