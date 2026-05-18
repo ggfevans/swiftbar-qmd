@@ -1,4 +1,5 @@
 import type {
+  ActionId,
   CollectionState,
   Config,
   CurrentState,
@@ -9,9 +10,12 @@ import type {
 } from "./types.ts";
 import { withTimeout } from "./time.ts";
 import {
+  appendFailure as productionAppendFailure,
+  deleteJobPidFile as productionDeleteJobPidFile,
   readJobPidFiles as productionReadJobPidFiles,
   readRecentFailures as productionReadRecentFailures,
 } from "./persistence.ts";
+import { isProcessAlive as productionIsProcessAlive } from "./actions.ts";
 import { logError } from "./log.ts";
 
 // ─── Source contract ───────────────────────────────────────────
@@ -26,6 +30,13 @@ import { logError } from "./log.ts";
  * 2-second timeout. `probeDaemon` carries a 5-second timeout. The two
  * filesystem readers from `lib/persistence.ts` are not timed — they
  * already swallow missing-file errors.
+ *
+ * The completion-detection sources (`isProcessAlive`,
+ * `readExitCodeFromLog`, `appendFailure`, `deleteJobPidFile`) are
+ * invoked per in-flight job after `readJobPidFiles` returns. See
+ * SPEC §13.4–§13.5: dead PIDs are demoted out of the in-flight set,
+ * their log is scanned for `EXIT_CODE=N`, and non-zero outcomes are
+ * appended to recent-failures.
  */
 export type StateSources = {
   readCollections: (config: Config) => Promise<CollectionState[]>;
@@ -33,6 +44,10 @@ export type StateSources = {
   probeDaemon: (config: Config) => Promise<DaemonState>;
   readJobPidFiles: () => Promise<JobInfo[]>;
   readRecentFailures: () => Promise<FailureRecord[]>;
+  isProcessAlive: (pid: number) => boolean;
+  readExitCodeFromLog: (logPath: string) => Promise<number>;
+  appendFailure: (failure: FailureRecord) => Promise<void>;
+  deleteJobPidFile: (action: ActionId, collection?: string) => Promise<void>;
 };
 
 // ─── Timeouts ──────────────────────────────────────────────────
@@ -253,6 +268,44 @@ async function statExists(path: string): Promise<boolean> {
   }
 }
 
+/**
+ * Read the trailing ~256 bytes of `logPath` and look for an
+ * `EXIT_CODE=N` marker (SPEC §13.4, §15.4). The shell wrapper in
+ * `lib/actions.ts` appends this line on every action; finding it
+ * proves the process exited normally and tells us the outcome.
+ *
+ * Returns:
+ *   - the parsed exit code when the marker is found
+ *   - `-1` when the marker is absent (treat as abnormal termination,
+ *     e.g. `kill -9` or a crash before the wrapper could append)
+ *   - `-1` when the file is missing or unreadable for any reason
+ */
+async function productionReadExitCodeFromLog(logPath: string): Promise<number> {
+  try {
+    const file = await Deno.open(logPath, { read: true });
+    try {
+      const stat = await file.stat();
+      const start = Math.max(0, Number(stat.size) - 256);
+      if (start > 0) {
+        await file.seek(start, Deno.SeekMode.Start);
+      }
+      const buf = new Uint8Array(256);
+      const n = (await file.read(buf)) ?? 0;
+      const tail = new TextDecoder().decode(buf.subarray(0, n));
+      const m = /EXIT_CODE=(-?\d+)\s*$/m.exec(tail);
+      if (!m) return -1;
+      const code = parseInt(m[1], 10);
+      return Number.isFinite(code) ? code : -1;
+    } finally {
+      file.close();
+    }
+  } catch {
+    // Missing file / read error: treat as abnormal termination per
+    // SPEC §13.4 (no EXIT_CODE ⇒ assume kill -9 etc.).
+    return -1;
+  }
+}
+
 // ─── Fallbacks ─────────────────────────────────────────────────
 
 function fallbackStatus(message: string): IndexStatus {
@@ -281,6 +334,10 @@ const PRODUCTION_SOURCES: StateSources = {
   probeDaemon: productionProbeDaemon,
   readJobPidFiles: productionReadJobPidFiles,
   readRecentFailures: productionReadRecentFailures,
+  isProcessAlive: productionIsProcessAlive,
+  readExitCodeFromLog: productionReadExitCodeFromLog,
+  appendFailure: productionAppendFailure,
+  deleteJobPidFile: productionDeleteJobPidFile,
 };
 
 // ─── Public API ────────────────────────────────────────────────
@@ -308,6 +365,13 @@ export async function readCurrentState(
       PRODUCTION_SOURCES.readJobPidFiles,
     readRecentFailures: sources.readRecentFailures ??
       PRODUCTION_SOURCES.readRecentFailures,
+    isProcessAlive: sources.isProcessAlive ??
+      PRODUCTION_SOURCES.isProcessAlive,
+    readExitCodeFromLog: sources.readExitCodeFromLog ??
+      PRODUCTION_SOURCES.readExitCodeFromLog,
+    appendFailure: sources.appendFailure ?? PRODUCTION_SOURCES.appendFailure,
+    deleteJobPidFile: sources.deleteJobPidFile ??
+      PRODUCTION_SOURCES.deleteJobPidFile,
   };
 
   // Each subroutine gets its own error boundary. We deliberately use
@@ -379,11 +443,11 @@ export async function readCurrentState(
     );
   }
 
-  let inFlightJobs: JobInfo[];
+  let rawJobs: JobInfo[];
   if (jobsResult.status === "fulfilled") {
-    inFlightJobs = jobsResult.value;
+    rawJobs = jobsResult.value;
   } else {
-    inFlightJobs = [];
+    rawJobs = [];
     await logError(
       "state",
       "readJobPidFiles failed",
@@ -391,6 +455,81 @@ export async function readCurrentState(
         ? jobsResult.reason
         : new Error(String(jobsResult.reason)),
     );
+  }
+
+  // ── Completion detection (SPEC §13.4 / §13.5) ───────────────
+  //
+  // For each PID file we just loaded, check whether the underlying
+  // process is still alive. Live jobs stay in inFlightJobs. Dead
+  // jobs are demoted: read the log tail for `EXIT_CODE=N`, append a
+  // FailureRecord when the code is non-zero, then delete the PID
+  // file so the next poll doesn't see a stale entry.
+  //
+  // Failures inside this loop are isolated per-job: one job's
+  // appendFailure throwing must not stop us from cleaning up the
+  // next job's PID file. The loop itself swallows everything to
+  // honour readCurrentState's never-throw contract.
+  const inFlightJobs: JobInfo[] = [];
+  for (const job of rawJobs) {
+    let alive = false;
+    try {
+      alive = s.isProcessAlive(job.pid);
+    } catch (err) {
+      await logError(
+        "state",
+        `isProcessAlive failed for pid=${job.pid}`,
+        err instanceof Error ? err : new Error(String(err)),
+      );
+      // If we can't tell, assume alive — better to under-clean than to
+      // wrongly record a phantom failure on a job that's still running.
+      alive = true;
+    }
+    if (alive) {
+      inFlightJobs.push(job);
+      continue;
+    }
+    // Dead: read exit code, record failure if non-zero, delete PID.
+    let exitCode = -1;
+    try {
+      exitCode = await s.readExitCodeFromLog(job.logPath);
+    } catch (err) {
+      await logError(
+        "state",
+        `readExitCodeFromLog failed for ${job.logPath}`,
+        err instanceof Error ? err : new Error(String(err)),
+      );
+      exitCode = -1;
+    }
+    if (exitCode !== 0) {
+      try {
+        await s.appendFailure({
+          action: job.action,
+          collection: job.collection,
+          failedAt: new Date(),
+          exitCode,
+          logPath: job.logPath,
+        });
+      } catch (err) {
+        await logError(
+          "state",
+          `appendFailure failed for ${job.action}${
+            job.collection ? `:${job.collection}` : ""
+          }`,
+          err instanceof Error ? err : new Error(String(err)),
+        );
+      }
+    }
+    try {
+      await s.deleteJobPidFile(job.action, job.collection);
+    } catch (err) {
+      await logError(
+        "state",
+        `deleteJobPidFile failed for ${job.action}${
+          job.collection ? `:${job.collection}` : ""
+        }`,
+        err instanceof Error ? err : new Error(String(err)),
+      );
+    }
   }
 
   let recentFailures: FailureRecord[];

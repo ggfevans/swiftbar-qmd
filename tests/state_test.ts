@@ -1,6 +1,7 @@
 import { assertEquals, assertNotEquals } from "@std/assert";
 import { readCurrentState } from "../lib/state.ts";
 import type {
+  ActionId,
   CollectionState,
   Config,
   DaemonState,
@@ -101,6 +102,14 @@ function makeSources(
     probeDaemon: () => Promise.resolve(makeDaemon()),
     readJobPidFiles: () => Promise.resolve([makeJob()]),
     readRecentFailures: () => Promise.resolve([makeFailure()]),
+    // The mocked job in `makeJob()` has pid=9999 (unlikely to be live).
+    // Tests that don't override `isProcessAlive` need it to claim alive
+    // so the completion loop doesn't try to clean up a fictional job
+    // and disturb the assertions in older happy-path tests.
+    isProcessAlive: (_pid: number) => true,
+    readExitCodeFromLog: (_path: string) => Promise.resolve(0),
+    appendFailure: (_f) => Promise.resolve(),
+    deleteJobPidFile: (_action, _collection) => Promise.resolve(),
     ...overrides,
   };
 }
@@ -249,4 +258,199 @@ Deno.test("readCurrentState: empty sources object falls back to production probe
   assertEquals(Array.isArray(result.inFlightJobs), true);
   assertEquals(Array.isArray(result.recentFailures), true);
   assertEquals(result.polledAt instanceof Date, true);
+});
+
+// ─── Completion detection (SPEC §13.4, §13.5) ─────────────────
+
+Deno.test("readCurrentState: dead PID with non-zero exit → appendFailure + delete + removed from inFlightJobs", async () => {
+  const job: JobInfo = {
+    action: "update-all" as ActionId,
+    pid: 99999,
+    startedAt: new Date("2026-05-17T11:50:00.000Z"),
+    command: ["qmd", "update"],
+    logPath: "/tmp/log.log",
+  };
+
+  const appendCalls: FailureRecord[] = [];
+  const deleteCalls: Array<{ action: ActionId; collection?: string }> = [];
+
+  const result = await readCurrentState(
+    makeConfig(),
+    makeSources({
+      readJobPidFiles: () => Promise.resolve([job]),
+      isProcessAlive: (_pid: number) => false,
+      readExitCodeFromLog: (_path: string) => Promise.resolve(1),
+      appendFailure: (f: FailureRecord) => {
+        appendCalls.push(f);
+        return Promise.resolve();
+      },
+      deleteJobPidFile: (action: ActionId, collection?: string) => {
+        deleteCalls.push({ action, collection });
+        return Promise.resolve();
+      },
+    }),
+  );
+
+  assertEquals(result.inFlightJobs, []);
+  assertEquals(appendCalls.length, 1);
+  assertEquals(appendCalls[0].action, "update-all");
+  assertEquals(appendCalls[0].exitCode, 1);
+  assertEquals(appendCalls[0].logPath, "/tmp/log.log");
+  assertEquals(deleteCalls.length, 1);
+  assertEquals(deleteCalls[0].action, "update-all");
+});
+
+Deno.test("readCurrentState: dead PID with exit 0 → delete + removed but NO appendFailure", async () => {
+  const job: JobInfo = {
+    action: "embed-collection" as ActionId,
+    collection: "gVault",
+    pid: 88888,
+    startedAt: new Date("2026-05-17T11:50:00.000Z"),
+    command: ["qmd", "embed", "-c", "gVault"],
+    logPath: "/tmp/embed.log",
+  };
+
+  const appendCalls: FailureRecord[] = [];
+  const deleteCalls: Array<{ action: ActionId; collection?: string }> = [];
+
+  const result = await readCurrentState(
+    makeConfig(),
+    makeSources({
+      readJobPidFiles: () => Promise.resolve([job]),
+      isProcessAlive: (_pid: number) => false,
+      readExitCodeFromLog: (_path: string) => Promise.resolve(0),
+      appendFailure: (f: FailureRecord) => {
+        appendCalls.push(f);
+        return Promise.resolve();
+      },
+      deleteJobPidFile: (action: ActionId, collection?: string) => {
+        deleteCalls.push({ action, collection });
+        return Promise.resolve();
+      },
+    }),
+  );
+
+  assertEquals(result.inFlightJobs, []);
+  assertEquals(appendCalls.length, 0);
+  assertEquals(deleteCalls.length, 1);
+  assertEquals(deleteCalls[0].action, "embed-collection");
+  assertEquals(deleteCalls[0].collection, "gVault");
+});
+
+Deno.test("readCurrentState: alive PID → job stays in inFlightJobs, no cleanup", async () => {
+  const job: JobInfo = {
+    action: "update-all" as ActionId,
+    pid: 77777,
+    startedAt: new Date("2026-05-17T11:50:00.000Z"),
+    command: ["qmd", "update"],
+    logPath: "/tmp/log.log",
+  };
+
+  const appendCalls: FailureRecord[] = [];
+  const deleteCalls: Array<{ action: ActionId; collection?: string }> = [];
+
+  const result = await readCurrentState(
+    makeConfig(),
+    makeSources({
+      readJobPidFiles: () => Promise.resolve([job]),
+      isProcessAlive: (_pid: number) => true,
+      readExitCodeFromLog: () => {
+        throw new Error(
+          "readExitCodeFromLog should not be called for live jobs",
+        );
+      },
+      appendFailure: (f: FailureRecord) => {
+        appendCalls.push(f);
+        return Promise.resolve();
+      },
+      deleteJobPidFile: (action: ActionId, collection?: string) => {
+        deleteCalls.push({ action, collection });
+        return Promise.resolve();
+      },
+    }),
+  );
+
+  assertEquals(result.inFlightJobs.length, 1);
+  assertEquals(result.inFlightJobs[0].action, "update-all");
+  assertEquals(appendCalls.length, 0);
+  assertEquals(deleteCalls.length, 0);
+});
+
+Deno.test("readCurrentState: dead PID with missing EXIT_CODE → exitCode -1 → appendFailure called", async () => {
+  // SPEC §13.4: if no EXIT_CODE marker found, abnormal termination ⇒ -1.
+  const job: JobInfo = {
+    action: "update-all" as ActionId,
+    pid: 66666,
+    startedAt: new Date("2026-05-17T11:50:00.000Z"),
+    command: ["qmd", "update"],
+    logPath: "/tmp/missing.log",
+  };
+
+  const appendCalls: FailureRecord[] = [];
+
+  const result = await readCurrentState(
+    makeConfig(),
+    makeSources({
+      readJobPidFiles: () => Promise.resolve([job]),
+      isProcessAlive: (_pid: number) => false,
+      readExitCodeFromLog: (_path: string) => Promise.resolve(-1),
+      appendFailure: (f: FailureRecord) => {
+        appendCalls.push(f);
+        return Promise.resolve();
+      },
+      deleteJobPidFile: () => Promise.resolve(),
+    }),
+  );
+
+  assertEquals(result.inFlightJobs, []);
+  assertEquals(appendCalls.length, 1);
+  assertEquals(appendCalls[0].exitCode, -1);
+});
+
+Deno.test("readCurrentState: mixed alive/dead jobs are partitioned correctly", async () => {
+  const liveJob: JobInfo = {
+    action: "update-all" as ActionId,
+    pid: 1111,
+    startedAt: new Date("2026-05-17T11:50:00.000Z"),
+    command: ["qmd", "update"],
+    logPath: "/tmp/live.log",
+  };
+  const deadJob: JobInfo = {
+    action: "embed-all" as ActionId,
+    pid: 2222,
+    startedAt: new Date("2026-05-17T11:55:00.000Z"),
+    command: ["qmd", "embed"],
+    logPath: "/tmp/dead.log",
+  };
+
+  const appendCalls: FailureRecord[] = [];
+  const deleteCalls: Array<{ action: ActionId; collection?: string }> = [];
+
+  const result = await readCurrentState(
+    makeConfig(),
+    makeSources({
+      readJobPidFiles: () => Promise.resolve([liveJob, deadJob]),
+      isProcessAlive: (pid: number) => pid === 1111,
+      readExitCodeFromLog: (path: string) => {
+        if (path === "/tmp/dead.log") return Promise.resolve(2);
+        throw new Error(`unexpected log path: ${path}`);
+      },
+      appendFailure: (f: FailureRecord) => {
+        appendCalls.push(f);
+        return Promise.resolve();
+      },
+      deleteJobPidFile: (action: ActionId, collection?: string) => {
+        deleteCalls.push({ action, collection });
+        return Promise.resolve();
+      },
+    }),
+  );
+
+  assertEquals(result.inFlightJobs.length, 1);
+  assertEquals(result.inFlightJobs[0].action, "update-all");
+  assertEquals(appendCalls.length, 1);
+  assertEquals(appendCalls[0].action, "embed-all");
+  assertEquals(appendCalls[0].exitCode, 2);
+  assertEquals(deleteCalls.length, 1);
+  assertEquals(deleteCalls[0].action, "embed-all");
 });

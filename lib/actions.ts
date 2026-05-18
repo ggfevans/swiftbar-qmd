@@ -83,8 +83,11 @@ async function productionSpawnDetached(
  * SIGCONT probe per SPEC §13.5. SIGCONT is harmless to a running
  * process (continues it if stopped, no-op otherwise). `Deno.kill`
  * throws `NotFound` / `PermissionDenied` for dead/foreign PIDs.
+ *
+ * Exported so the state reader (lib/state.ts) can reuse the same
+ * production probe when checking completion of in-flight jobs.
  */
-function productionIsProcessAlive(pid: number): boolean {
+export function isProcessAlive(pid: number): boolean {
   try {
     Deno.kill(pid, "SIGCONT");
     return true;
@@ -181,7 +184,7 @@ const PRODUCTION_DEPS: ActionDeps = {
   readJobPidFile: productionReadJobPidFile,
   writeJobPidFile: productionWriteJobPidFile,
   spawnDetached: productionSpawnDetached,
-  isProcessAlive: productionIsProcessAlive,
+  isProcessAlive,
   touchSentinel: productionTouchSentinel,
   runQmdContextList: productionRunQmdContextList,
   showContextDialog: productionShowContextDialog,

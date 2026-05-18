@@ -4,11 +4,12 @@ import type {
   Config,
   CurrentState,
   FirstRunState,
+  JobInfo,
   Tier,
   TierReason,
 } from "./types.ts";
 import { compactDuration, relativeTime } from "./time.ts";
-import { computeTier } from "./rollup.ts";
+import { actionLabel, computeTier } from "./rollup.ts";
 
 // ─── Icon glyphs (SPEC §9.3) ──────────────────────────────────
 //
@@ -259,7 +260,57 @@ function renderStatusSection(state: CurrentState, config: Config): string[] {
     } | color=${MUTED_HEX} shell= length=${DAEMON_ROW_LENGTH} trim=false`,
   );
 
+  // In-flight job rows (SPEC §10.3). One row per active job, showing
+  // the friendly action label and the elapsed time since startedAt.
+  // `shell=` keeps the row informational (no click action).
+  for (const job of state.inFlightJobs) {
+    const label = actionLabel(job.action);
+    const elapsed = compactDuration(
+      state.polledAt.getTime() - job.startedAt.getTime(),
+    );
+    lines.push(
+      `⟳ Running: ${label} for ${elapsed} | color=${TIER_HEX.amber} size=12 shell=`,
+    );
+  }
+
   return lines;
+}
+
+// ─── In-flight action helpers (SPEC §10.3) ────────────────────
+
+/**
+ * Find an in-flight job matching the given action+collection. Collection
+ * `undefined` matches only global jobs (collection-less). A named
+ * collection matches the same action+collection. Returns the first
+ * match (PID files are unique per action+collection so this is also
+ * the only match in practice).
+ */
+function findInFlightJob(
+  jobs: JobInfo[],
+  action: ActionId,
+  collection?: string,
+): JobInfo | undefined {
+  return jobs.find((j) =>
+    j.action === action && (j.collection ?? undefined) === collection
+  );
+}
+
+/**
+ * Render the body of a "Running: <verb>… (<elapsed>)" action row given
+ * the job and the polled-at time. Used by both the global actions and
+ * the per-collection submenu rewriters.
+ *
+ * The verb is the lowercase form of the shared `actionLabel` lookup
+ * (SPEC §10.3 mockup shows "Running: update…" — sentence case mid-row).
+ * Keeping the verb derived from the same lookup as the Status rows
+ * means menu copy stays consistent if action ids ever change.
+ */
+function inFlightActionText(job: JobInfo, polledAt: Date): string {
+  const elapsed = compactDuration(
+    polledAt.getTime() - job.startedAt.getTime(),
+  );
+  const verb = actionLabel(job.action).toLowerCase();
+  return `Running: ${verb}… (${elapsed})`;
 }
 
 // Collection names that go into shell arguments must match this. Anything
@@ -300,7 +351,14 @@ function renderCollectionsSection(
     );
 
     lines.push(
-      ...renderCollectionSubmenu(c, tier, config, state.polledAt, pluginPath),
+      ...renderCollectionSubmenu(
+        c,
+        tier,
+        config,
+        state.polledAt,
+        pluginPath,
+        state.inFlightJobs,
+      ),
     );
   }
 
@@ -338,6 +396,7 @@ function renderCollectionSubmenu(
   config: Config,
   polledAt: Date,
   pluginPath: string,
+  inFlightJobs: JobInfo[],
 ): string[] {
   const INDENT = "  ";
   const lines: string[] = [];
@@ -383,7 +442,14 @@ function renderCollectionSubmenu(
   lines.push(`${INDENT}---`);
 
   // ── Per-collection actions (go through the action runner) ──
+  // Mirrors the global-action helper: if a per-collection job is in
+  // flight for the same (action, collection) pair, swap the label
+  // and append `disabled=true` (SPEC §10.3).
   const collectionAction = (label: string, actionId: ActionId): string => {
+    const inFlight = findInFlightJob(inFlightJobs, actionId, c.name);
+    const displayLabel = inFlight
+      ? inFlightActionText(inFlight, polledAt)
+      : label;
     const parts = [
       `bash="${pluginPath}"`,
       `param1="--action"`,
@@ -393,7 +459,8 @@ function renderCollectionSubmenu(
       "terminal=false",
       "refresh=true",
     ];
-    return `${INDENT}${label} | ${parts.join(" ")}`;
+    if (inFlight) parts.push("disabled=true");
+    return `${INDENT}${displayLabel} | ${parts.join(" ")}`;
   };
 
   lines.push(collectionAction("↻ Update this collection", "update-collection"));
@@ -448,11 +515,19 @@ function renderGlobalActionsSection(
   const lines: string[] = [];
   lines.push(`Global actions | size=10 color=${MUTED_HEX} shell=`);
 
+  // Build a single row for a global action. If a global-scope job
+  // (`collection === undefined`) is in flight for the same ActionId,
+  // the row text becomes "Running: <id>… (Nm)" and `disabled=true` is
+  // appended so SwiftBar no-ops the click (SPEC §10.3).
   const action = (
     label: string,
-    actionId: string,
+    actionId: ActionId,
     extras: string[] = [],
   ): string => {
+    const inFlight = findInFlightJob(state.inFlightJobs, actionId, undefined);
+    const displayLabel = inFlight
+      ? inFlightActionText(inFlight, state.polledAt)
+      : label;
     const parts = [
       `bash="${pluginPath}"`,
       `param1="--action"`,
@@ -461,7 +536,8 @@ function renderGlobalActionsSection(
       "refresh=true",
       ...extras,
     ];
-    return `${label} | ${parts.join(" ")}`;
+    if (inFlight) parts.push("disabled=true");
+    return `${displayLabel} | ${parts.join(" ")}`;
   };
 
   lines.push(action(
@@ -515,9 +591,11 @@ function renderPreferencesFooter(): string[] {
  * string of newline-joined SwiftBar lines with a trailing newline. The
  * caller is expected to `console.log` it as-is.
  *
- * In-flight job rendering (SPEC §10.3) and error-state fallback
- * (SPEC §10.4) are layered on top of this base in later prompts:
- *   - (deferred to step 12: in-flight job rewriting in Status / Actions)
+ * In-flight job rendering (SPEC §10.3) is now wired in: when
+ * `state.inFlightJobs` is non-empty, the Status section gains
+ * "⟳ Running:" rows and the matching action rows are rewritten as
+ * "Running: <id>… (Nm)" with `disabled=true`. Remaining layered
+ * features:
  *   - (deferred to step 13: confirmation dialogs for force-reembed/cleanup)
  *   - (deferred to step 15: error-state fallback header / footer)
  */

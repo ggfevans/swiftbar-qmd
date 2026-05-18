@@ -59,8 +59,15 @@ function anyFailureWithin(
   return mostRecent;
 }
 
-/** Map an internal ActionId to the human label used in "X job in flight". */
-function actionLabel(action: ActionId): string {
+/**
+ * Map an internal ActionId to the human label used in "X job in flight".
+ *
+ * Exported so the menu renderer can reuse the same label mapping in
+ * the in-flight "⟳ Running: <label>…" rows (SPEC §10.3). Keeping the
+ * lookup in one place ensures Status drivers and menu copy stay in
+ * sync if action ids ever change.
+ */
+export function actionLabel(action: ActionId): string {
   switch (action) {
     case "update-all":
     case "update-collection":

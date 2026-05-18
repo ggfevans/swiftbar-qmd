@@ -12,7 +12,12 @@ import { runAction } from "./lib/actions.ts";
 import { loadConfig } from "./lib/config.ts";
 import { detectFirstRunState } from "./lib/detect.ts";
 import { renderFirstRunMenu, renderMenu } from "./lib/menu.ts";
-import { ensureCacheTree, readSnapshot } from "./lib/persistence.ts";
+import {
+  ensureCacheTree,
+  pruneFailuresOlderThan,
+  pruneLogs,
+  readSnapshot,
+} from "./lib/persistence.ts";
 import { readCurrentState } from "./lib/state.ts";
 import { computeTierWithReason } from "./lib/rollup.ts";
 import type { ActionId } from "./lib/types.ts";
@@ -53,10 +58,21 @@ async function main(): Promise<void> {
   // Rollup (step 8). Compute the tier from current state.
   const tier = computeTierWithReason(state, config);
 
-  // Render the §10 healthy menu (step 9). In-flight rewriting,
-  // per-collection submenus, and error-state fallback layer on top
-  // of this in steps 10 / 12 / 15.
+  // Render the §10 healthy menu (step 9). In-flight rewriting and
+  // per-collection submenus are layered in via state.ts (step 12);
+  // error-state fallback lands in step 15.
   console.log(renderMenu(state, tier, config));
+
+  // Cleanup pass (SPEC §15.3): trim recent-failures past the amber
+  // window and rotate log files down to `retain_per_action`. Both
+  // are best-effort filesystem ops; persistence.ts swallows errors
+  // internally so they can't mask the rendered menu output.
+  //
+  // (deferred to step 14: writeSnapshot wiring + notification dedupe
+  // pruning will hook in here too.)
+  await pruneFailuresOlderThan(config.rollup.error_window.amber_hours);
+  await pruneLogs(config.logs.retain_per_action);
+
   Deno.exit(0);
 }
 
