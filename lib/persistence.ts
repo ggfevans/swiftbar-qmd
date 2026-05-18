@@ -29,13 +29,13 @@ export function cacheDir(): string {
   return `${home}/.cache/swiftbar-qmd`;
 }
 
-/** Convenience constant for callers that prefer a fixed reference. */
-export const CACHE_DIR: string = (() => {
-  const override = Deno.env.get("SWIFTBAR_QMD_CACHE_DIR");
-  if (override && override.length > 0) return override;
-  const home = Deno.env.get("HOME") ?? "";
-  return `${home}/.cache/swiftbar-qmd`;
-})();
+/**
+ * Convenience getter for callers that prefer a fixed reference.
+ * Always delegates to cacheDir() to ensure consistent env var handling.
+ */
+export function CACHE_DIR(): string {
+  return cacheDir();
+}
 
 function snapshotPath(): string {
   return join(cacheDir(), "last-poll.json");

@@ -23,7 +23,7 @@ menubar icon's colour) answers "do I need to click?" without opening the menu,
 the dropdown is organised by signal type for fast scanning, and notifications
 are reserved for failures so the tool does not accumulate notification debt.
 
-It is explicitly **not** a search interface — searching is qmd's CLI / MCP /
+It is explicitly **not** a search interface. Searching is qmd's CLI / MCP /
 SDK job, and a separate TUI ([lazyqmd](https://github.com/AlexZeitler/lazyqmd))
 already covers that surface. swiftbar-qmd is an operational dashboard.
 
@@ -90,7 +90,7 @@ SwiftBar handles download and placement. You still need Deno on your `$PATH`.
 Configuration lives at `~/.config/swiftbar-qmd/config.yml`. Clicking the
 **Preferences…** entry in the dropdown opens it in your default editor
 (`$EDITOR`, falling back to `open -t`). Changes are picked up on the next
-30-second poll — no SwiftBar restart needed.
+30-second poll; no SwiftBar restart needed.
 
 See [`docs/planning/SPEC.md` §7.2](docs/planning/SPEC.md#72-schema) for the full
 schema (rollup thresholds, notification toggles, UI options, log retention) and
@@ -145,8 +145,8 @@ deno task check   # type-check
 Restart SwiftBar (Cmd-Q in the SwiftBar menu, then relaunch). The first poll
 takes up to 30 seconds.
 
-**Icon stays grey.** The plugin reports no collections — usually because
-`qmd` is missing from `$PATH` or `~/.cache/qmd/index.sqlite` doesn't exist yet.
+**Icon stays grey.** The plugin reports no collections (usually because
+`qmd` is missing from `$PATH` or `~/.cache/qmd/index.sqlite` doesn't exist yet).
 Run `qmd update` against at least one collection to populate the index, then
 wait for the next poll.
 
