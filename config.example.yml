@@ -1,0 +1,39 @@
+# swiftbar-qmd config — values shown are defaults
+# Tuning these adjusts what triggers yellow/red on the menubar icon.
+
+qmd:
+  # Path to the qmd SQLite index. Default matches qmd's own location.
+  index_path: ~/.cache/qmd/index.sqlite
+  # MCP daemon endpoint. Used for /health probe only.
+  daemon_url: http://localhost:8181
+
+rollup:
+  freshness:
+    amber_hours: 24 # Yellow if last successful update > this
+    red_days: 7 # Red if last successful update > this
+  coverage:
+    amber_percent: 95 # Yellow if any collection embedded below this
+    red_percent: 50 # Red if any collection embedded below this
+  error_window:
+    red_hours: 1 # Red for this long after a maintenance op failure
+    amber_hours: 24 # Yellow during the period from red_hours to amber_hours after a failure
+
+notifications:
+  on_daemon_crash: true
+  on_op_failure: true
+  on_path_unreachable: true
+  # Opt-in (default false): success and threshold-breach notifications
+  on_job_completion: false
+  on_threshold_breach: false
+
+ui:
+  # Per-collection row meta format. Options: 'freshness' | 'coverage' | 'both'
+  collection_meta: freshness
+  # Hide "Open in Obsidian" submenu item for collections without .obsidian/
+  hide_obsidian_when_absent: true
+
+logs:
+  # Where action stdout/stderr is captured
+  directory: ~/.cache/swiftbar-qmd/logs
+  # Max log files to retain per action type before rotation
+  retain_per_action: 10
