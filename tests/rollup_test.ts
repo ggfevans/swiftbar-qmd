@@ -121,6 +121,58 @@ Deno.test("computeTier: empty state → grey", () => {
   assertEquals(computeTier(state, buildConfig()), "grey");
 });
 
+Deno.test(
+  "computeTier: status.error + empty collections → NOT grey (PR #1 A8)",
+  () => {
+    // Regression: when readIndexStatus fails, status.error is set AND
+    // totalCollections falls back to 0. Combined with an empty
+    // collections list (typical of a failed read), the pre-A8 grey
+    // gate fired — masquerading a hard failure as the cosmetic "you
+    // have no collections" tier. The fix gates grey on
+    // `!state.status.error`; now this state falls through to the
+    // normal checks (daemon stopped, etc.).
+    const state = buildState({
+      collections: [],
+      status: buildStatus({
+        totalCollections: 0,
+        totalDocs: 0,
+        error: "sdk read failed: index.sqlite missing",
+      }),
+      // Daemon stopped — a common companion to status.error in
+      // practice. This should drive red instead of grey.
+      daemon: buildDaemon({ status: "stopped" }),
+    });
+    assertEquals(computeTier(state, buildConfig()), "red");
+  },
+);
+
+Deno.test(
+  "computeTierWithReason: status.error + empty collections → NOT grey driver (PR #1 A8)",
+  () => {
+    // Same gate, surfaced through the with-reason variant: drivers
+    // must reflect the actual failure mode, not "No collections
+    // configured" which is misleading when the read errored.
+    const state = buildState({
+      collections: [],
+      status: buildStatus({
+        totalCollections: 0,
+        totalDocs: 0,
+        error: "sdk timeout",
+      }),
+      daemon: buildDaemon({ status: "stopped" }),
+    });
+    const result = computeTierWithReason(state, buildConfig());
+    // Tier is red (driven by daemon stopped, not by the missing grey).
+    assertEquals(result.tier, "red");
+    // And the "No collections configured" driver must NOT appear.
+    assertEquals(
+      result.drivers.includes("No collections configured"),
+      false,
+      `unexpected grey driver in: ${result.drivers.join(" | ")}`,
+    );
+  },
+);
+
 Deno.test("computeTier: all green baseline", () => {
   assertEquals(computeTier(buildState(), buildConfig()), "green");
 });

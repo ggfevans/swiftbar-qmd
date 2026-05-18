@@ -113,8 +113,18 @@ function maxTier(a: Tier, b: Tier): Tier {
  * supplied by `state.polledAt`.
  */
 export function computeTier(state: CurrentState, config: Config): Tier {
-  // Special states first.
-  if (!state.collections.length && !state.status.totalCollections) {
+  // Special grey state: legitimately empty index (no collections
+  // configured AND the SDK confirmed the index has none). Gated on
+  // `!status.error` because when the index read failed,
+  // `totalCollections` is 0 from the fallback — without this gate a
+  // poll that completely failed to read the index would render as the
+  // cosmetic "you have no collections" tier instead of an error tier
+  // and the user wouldn't see the failure. See PR #1 finding A8.
+  if (
+    !state.collections.length &&
+    !state.status.totalCollections &&
+    !state.status.error
+  ) {
     return "grey";
   }
 
@@ -186,8 +196,14 @@ export function computeTierWithReason(
   state: CurrentState,
   config: Config,
 ): TierReason {
-  // Special grey state — no collections at all.
-  if (!state.collections.length && !state.status.totalCollections) {
+  // Special grey state — legitimately no collections at all. Gated
+  // on `!status.error` so a failed index read doesn't masquerade as
+  // the cosmetic "no collections" tier. See PR #1 finding A8.
+  if (
+    !state.collections.length &&
+    !state.status.totalCollections &&
+    !state.status.error
+  ) {
     return { tier: "grey", drivers: ["No collections configured"] };
   }
 

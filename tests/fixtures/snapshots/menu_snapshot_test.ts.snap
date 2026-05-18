@@ -357,7 +357,7 @@ Index has no documents | size=10 color=#412402 shell=
 `;
 
 snapshot[`snapshot: 8 — error state (consecutiveReadFailures: 1, prev snapshot) 1`] = `
-| image=PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNCAxNCIgd2lkdGg9IjE0IiBoZWlnaHQ9IjE0Ij48Y2lyY2xlIGN4PSI2LjIiIGN5PSI2LjIiIHI9IjQuMiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJjdXJyZW50Q29sb3IiIHN0cm9rZS13aWR0aD0iMS40Ii8+PGxpbmUgeDE9IjguNiIgeTE9IjguNiIgeDI9IjExLjIiIHkyPSIxMS4yIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIxLjYiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjwvc3ZnPg== templateImage=true tooltip="No collections configured"
+| image=PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNCAxNCIgd2lkdGg9IjE0IiBoZWlnaHQ9IjE0Ij48Y2lyY2xlIGN4PSI2LjIiIGN5PSI2LjIiIHI9IjQuMiIgZmlsbD0iY3VycmVudENvbG9yIi8+PGNpcmNsZSBjeD0iNi4yIiBjeT0iNi4yIiByPSIxLjYiIGZpbGw9IndoaXRlIi8+PGxpbmUgeDE9IjguNiIgeTE9IjguNiIgeDI9IjExLjIiIHkyPSIxMS4yIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIxLjYiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjwvc3ZnPg== templateImage=true color=#2fa84f tooltip="All clear"
 ---
 ⚠ Status read failed — using last poll (5 minutes ago) | size=10 color=#d8453f shell=
 ---
