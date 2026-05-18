@@ -196,14 +196,49 @@ async function productionShowContextDialog(
  * error) collapses to false so destructive actions stay safe by
  * default.
  */
+/**
+ * Build the AppleScript source for the confirmation dialog. Extracted
+ * from `productionConfirmDialog` so tests can assert on the exact
+ * script string without invoking `osascript`. See PR #1 A7.
+ *
+ * `giving up after 60` makes the dialog auto-dismiss after 60 seconds
+ * if the user walks away — AppleScript surfaces this in stdout as
+ * `gave up:true`. SwiftBar's plugin process stays alive for the
+ * duration, so without the timeout a destructive-action dialog could
+ * hang forever and pile up zombie osascript processes. See SPEC §11.2.
+ */
+export function buildConfirmDialogScript(
+  message: string,
+  proceedLabel: string,
+): string {
+  const safeMessage = escapeForAppleScript(message);
+  const safeProceed = escapeForAppleScript(proceedLabel);
+  return `display dialog "${safeMessage}" with title "swiftbar-qmd" ` +
+    `buttons {"Cancel", "${safeProceed}"} default button "Cancel" ` +
+    `with icon caution giving up after 60`;
+}
+
+/**
+ * Parse `osascript`'s stdout for the confirmation dialog. Returns
+ * true ONLY when the user clicked the proceed button. Cancel,
+ * 60-second timeout (`gave up:true`), and any other shape collapse to
+ * false so destructive actions stay safe by default. See PR #1 A7.
+ */
+export function parseConfirmDialogOutput(
+  stdoutText: string,
+  proceedLabel: string,
+): boolean {
+  // Timeout path: AppleScript emits `gave up:true` instead of the
+  // button-returned line. Treat as Cancel.
+  if (stdoutText.includes("gave up:true")) return false;
+  return stdoutText.includes(`button returned:${proceedLabel}`);
+}
+
 async function productionConfirmDialog(
   message: string,
   proceedLabel: string,
 ): Promise<boolean> {
-  const safeMessage = escapeForAppleScript(message);
-  const safeProceed = escapeForAppleScript(proceedLabel);
-  const script =
-    `display dialog "${safeMessage}" with title "swiftbar-qmd" buttons {"Cancel", "${safeProceed}"} default button "Cancel" with icon caution`;
+  const script = buildConfirmDialogScript(message, proceedLabel);
   try {
     const proc = new Deno.Command("osascript", {
       args: ["-e", script],
@@ -213,7 +248,7 @@ async function productionConfirmDialog(
     const { stdout, code } = await proc.output();
     if (code !== 0) return false;
     const text = new TextDecoder().decode(stdout);
-    return text.includes(`button returned:${proceedLabel}`);
+    return parseConfirmDialogOutput(text, proceedLabel);
   } catch (err) {
     await logError(
       "actions",

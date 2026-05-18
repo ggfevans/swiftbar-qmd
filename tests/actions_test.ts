@@ -1,5 +1,13 @@
-import { assertEquals, assertNotEquals } from "@std/assert";
-import { runAction } from "../lib/actions.ts";
+import {
+  assertEquals,
+  assertNotEquals,
+  assertStringIncludes,
+} from "@std/assert";
+import {
+  buildConfirmDialogScript,
+  parseConfirmDialogOutput,
+  runAction,
+} from "../lib/actions.ts";
 import type { ActionDeps } from "../lib/actions.ts";
 import type { ActionId, JobInfo } from "../lib/types.ts";
 
@@ -524,4 +532,75 @@ Deno.test("runAction: non-destructive actions do not invoke confirmDialog", asyn
     assertEquals(rec.confirmDialogCalls.length, 0, `${id} must not confirm`);
     assertEquals(rec.spawnDetachedCalls.length, 1, `${id} must spawn`);
   }
+});
+
+// ─── Confirm dialog timeout (SPEC §11.2, PR #1 A7) ────────────
+
+Deno.test("buildConfirmDialogScript: includes 60s timeout (PR #1 A7)", () => {
+  // Regression: pre-A7 the script had no `giving up after` clause, so
+  // the dialog blocked indefinitely. SwiftBar's plugin process stays
+  // alive for the duration — zombie processes piled up whenever the
+  // user walked away. SPEC §11.2 documents the 60s timeout.
+  const script = buildConfirmDialogScript(
+    "Force re-embed?",
+    "Re-embed",
+  );
+
+  // Critical: the `giving up after 60` clause must be present.
+  assertStringIncludes(script, "giving up after 60");
+  // Sanity-check the rest of the dialog shape stays correct so a
+  // future refactor doesn't drop the timeout when it tidies the
+  // string assembly.
+  assertStringIncludes(script, `display dialog "Force re-embed?"`);
+  assertStringIncludes(script, `with title "swiftbar-qmd"`);
+  assertStringIncludes(script, `buttons {"Cancel", "Re-embed"}`);
+  assertStringIncludes(script, `default button "Cancel"`);
+  assertStringIncludes(script, `with icon caution`);
+});
+
+Deno.test("parseConfirmDialogOutput: button-returned proceed → true", () => {
+  assertEquals(
+    parseConfirmDialogOutput("button returned:Re-embed\n", "Re-embed"),
+    true,
+  );
+});
+
+Deno.test("parseConfirmDialogOutput: button-returned Cancel → false", () => {
+  assertEquals(
+    parseConfirmDialogOutput("button returned:Cancel\n", "Re-embed"),
+    false,
+  );
+});
+
+Deno.test("parseConfirmDialogOutput: gave up:true → false (PR #1 A7)", () => {
+  // The 60s timeout path. AppleScript emits `gave up:true` instead of
+  // (or alongside) a button-returned line. We MUST treat that as
+  // Cancel — never proceed on timeout, destructive actions stay safe.
+  assertEquals(
+    parseConfirmDialogOutput("gave up:true\n", "Re-embed"),
+    false,
+  );
+});
+
+Deno.test(
+  "parseConfirmDialogOutput: gave up:true wins even if button-returned present",
+  () => {
+    // Defence-in-depth: if AppleScript emits both (e.g. a future macOS
+    // version changes the format), the timeout still wins.
+    assertEquals(
+      parseConfirmDialogOutput(
+        "button returned:Re-embed, gave up:true\n",
+        "Re-embed",
+      ),
+      false,
+    );
+  },
+);
+
+Deno.test("parseConfirmDialogOutput: empty/unknown stdout → false", () => {
+  assertEquals(parseConfirmDialogOutput("", "Re-embed"), false);
+  assertEquals(
+    parseConfirmDialogOutput("something weird\n", "Re-embed"),
+    false,
+  );
 });
