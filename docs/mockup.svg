@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 500" width="700" height="500" role="img" aria-label="swiftbar-qmd menubar mockup showing the right-aligned icon, the dropdown beneath it, and the Rackula submenu flying out to the left.">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="3"/>
+      <feOffset dy="2"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.2"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <style>
+      .ui { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+      .menubar { fill: #e8e8ea; font-size: 12px; }
+      .menu-head { fill: #8a8a8e; font-size: 10.5px; font-weight: 500; }
+      .menu-row { fill: #1d1d1f; font-size: 12px; }
+      .menu-meta { fill: #6e6e72; font-size: 11px; font-variant-numeric: tabular-nums; }
+      .menu-disabled { fill: #6e6e72; font-size: 12px; }
+      .selected-text { fill: #ffffff; font-size: 12px; }
+      .selected-meta { fill: #ffffff; font-size: 11px; }
+    </style>
+  </defs>
+
+  <rect width="700" height="500" fill="#f6f6f7"/>
+
+  <rect x="0" y="0" width="700" height="28" fill="#1d1d1f"/>
+
+  <g transform="translate(478, 6)">
+    <rect x="0" y="0" width="32" height="16" rx="4" fill="rgba(255,255,255,0.18)"/>
+    <g transform="translate(5, 2)">
+      <circle cx="6.2" cy="6.2" r="4.2" fill="#ec9b2c"/>
+      <circle cx="6.2" cy="6.2" r="1.6" fill="#1d1d1f"/>
+      <line x1="8.6" y1="8.6" x2="11.2" y2="11.2" stroke="#ec9b2c" stroke-width="1.6" stroke-linecap="round"/>
+    </g>
+    <text x="22" y="12" class="ui" fill="#cfcfd2" font-size="8">▾</text>
+  </g>
+
+  <g transform="translate(525, 14)">
+    <path d="M-5 2 Q0 -2 5 2 M-3 4 Q0 1.5 3 4" fill="none" stroke="#e8e8ea" stroke-width="1.3" stroke-linecap="round"/>
+    <circle cx="0" cy="7" r="0.9" fill="#e8e8ea"/>
+  </g>
+
+  <g transform="translate(548, 9)">
+    <rect x="0" y="0" width="18" height="9" rx="2" fill="none" stroke="#e8e8ea" stroke-width="1"/>
+    <rect x="1.5" y="1.5" width="11" height="6" fill="#e8e8ea"/>
+    <rect x="19" y="3" width="1.5" height="3" rx="0.5" fill="#e8e8ea"/>
+  </g>
+
+  <text x="680" y="19" text-anchor="end" class="ui menubar">Sun 17 May  12:34</text>
+
+  <g filter="url(#shadow)">
+    <rect x="240" y="32" width="290" height="455" rx="6" fill="#fdfdfd" stroke="rgba(0,0,0,0.18)" stroke-width="0.5"/>
+  </g>
+
+  <text x="252" y="49" class="ui menu-head">Status</text>
+  <circle cx="258" cy="65" r="3.5" fill="#2fa84f"/>
+  <text x="270" y="69" class="ui menu-row">Daemon running</text>
+  <text x="518" y="69" text-anchor="end" class="ui menu-meta">6h 04m</text>
+
+  <circle cx="258" cy="85" r="3.5" fill="#ec9b2c"/>
+  <text x="270" y="89" class="ui menu-row">1 collection drifting</text>
+
+  <text x="270" y="109" class="ui menu-disabled">Last update</text>
+  <text x="518" y="109" text-anchor="end" class="ui menu-meta">52m ago</text>
+
+  <line x1="248" y1="122" x2="522" y2="122" stroke="rgba(0,0,0,0.08)"/>
+
+  <text x="252" y="139" class="ui menu-head">Collections (4)</text>
+  <circle cx="258" cy="156" r="3.5" fill="#2fa84f"/>
+  <text x="270" y="160" class="ui menu-row">gVault</text>
+  <text x="518" y="160" text-anchor="end" class="ui menu-meta">2,057 · 18h</text>
+
+  <circle cx="258" cy="176" r="3.5" fill="#2fa84f"/>
+  <text x="270" y="180" class="ui menu-row">jobinator9000</text>
+  <text x="518" y="180" text-anchor="end" class="ui menu-meta">129 · 1h</text>
+
+  <circle cx="258" cy="196" r="3.5" fill="#2fa84f"/>
+  <text x="270" y="200" class="ui menu-row">obsidian-reference</text>
+  <text x="518" y="200" text-anchor="end" class="ui menu-meta">1,596 · 52m</text>
+
+  <rect x="246" y="210" width="278" height="20" rx="3" fill="#2376e5"/>
+  <circle cx="258" cy="220" r="3.5" fill="#ec9b2c"/>
+  <text x="270" y="224" class="ui selected-text">Rackula</text>
+  <text x="500" y="224" text-anchor="end" class="ui selected-meta">391 · 1d</text>
+  <text x="518" y="224" text-anchor="end" class="ui selected-meta">▸</text>
+
+  <line x1="248" y1="240" x2="522" y2="240" stroke="rgba(0,0,0,0.08)"/>
+
+  <text x="252" y="257" class="ui menu-head">Global actions</text>
+  <text x="252" y="277" class="ui menu-row">↻  Update all collections</text>
+  <text x="518" y="277" text-anchor="end" class="ui menu-meta">⌘U</text>
+
+  <text x="252" y="297" class="ui menu-row">⚡  Embed all (new only)</text>
+  <text x="518" y="297" text-anchor="end" class="ui menu-meta">⌘E</text>
+
+  <text x="252" y="317" class="ui menu-row">⟳  Restart MCP daemon</text>
+  <text x="252" y="337" class="ui menu-row">■  Stop MCP daemon</text>
+  <text x="252" y="357" class="ui menu-row">🧹  Cleanup orphaned data…</text>
+
+  <line x1="248" y1="370" x2="522" y2="370" stroke="rgba(0,0,0,0.08)"/>
+
+  <text x="252" y="387" class="ui menu-row">⧉  Copy MCP endpoint URL</text>
+  <text x="252" y="407" class="ui menu-row">›_  Show qmd status in Terminal</text>
+
+  <line x1="248" y1="420" x2="522" y2="420" stroke="rgba(0,0,0,0.08)"/>
+
+  <text x="252" y="437" class="ui menu-row">⚙  Preferences…</text>
+  <text x="518" y="437" text-anchor="end" class="ui menu-meta">⌘,</text>
+  <text x="252" y="457" class="ui menu-row">ⓘ  About swiftbar-qmd</text>
+
+  <g filter="url(#shadow)">
+    <rect x="14" y="210" width="230" height="252" rx="6" fill="#fdfdfd" stroke="rgba(0,0,0,0.18)" stroke-width="0.5"/>
+  </g>
+
+  <text x="26" y="227" class="ui menu-head">Rackula</text>
+  <text x="26" y="247" class="ui menu-disabled">391 docs · qmd://Rackula/</text>
+  <text x="26" y="267" class="ui menu-disabled">Pattern</text>
+  <text x="234" y="267" text-anchor="end" class="ui menu-meta">**/*.md</text>
+  <text x="26" y="287" class="ui menu-disabled">Last updated</text>
+  <text x="234" y="287" text-anchor="end" class="ui menu-meta">1d ago ⚠</text>
+
+  <line x1="22" y1="300" x2="236" y2="300" stroke="rgba(0,0,0,0.08)"/>
+
+  <text x="26" y="317" class="ui menu-row">↻  Update this collection</text>
+  <text x="26" y="337" class="ui menu-row">⚡  Embed (new chunks only)</text>
+  <text x="26" y="357" class="ui menu-row">⚡⚡  Force re-embed all</text>
+
+  <line x1="22" y1="370" x2="236" y2="370" stroke="rgba(0,0,0,0.08)"/>
+
+  <text x="26" y="387" class="ui menu-row">📁  Reveal in Finder</text>
+  <text x="26" y="407" class="ui menu-row">📓  Open in Obsidian</text>
+  <text x="26" y="427" class="ui menu-row">⧉  Copy collection name</text>
+  <text x="26" y="447" class="ui menu-row">ⓘ  View context…</text>
+</svg>
