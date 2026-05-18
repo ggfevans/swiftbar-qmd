@@ -8,6 +8,7 @@ import type {
   IndexStatus,
   JobInfo,
   LogFileInfo,
+  PollSnapshot,
 } from "./types.ts";
 import { withTimeout } from "./time.ts";
 import {
@@ -588,5 +589,101 @@ export async function readCurrentState(
     recentFailures,
     recentLogs,
     polledAt: new Date(),
+  };
+}
+
+// ─── Defensive wrapper (SPEC §16.2) ────────────────────────────
+
+/**
+ * Build a synthesized "last-good" CurrentState from a previous
+ * snapshot, preserving the previous collections / daemon / in-flight
+ * set while marking the current poll's `polledAt` and the
+ * `status.error` so menu degradation can surface the failed read.
+ *
+ * Exported for testability; production code calls
+ * `readCurrentStateWithSnapshot`, which composes this helper with the
+ * raw `readCurrentState`.
+ */
+export function synthesizeLastGoodState(
+  prev: PollSnapshot,
+  current: CurrentState,
+): CurrentState {
+  return {
+    collections: prev.collections,
+    status: {
+      totalDocs: 0,
+      totalCollections: prev.collections.length,
+      dbSizeBytes: 0,
+      modelCacheBytes: 0,
+      error: current.status.error ?? "Status read failed",
+    },
+    daemon: prev.daemon,
+    inFlightJobs: prev.inFlightJobs ?? [],
+    recentFailures: prev.recentOpFailures,
+    // recentLogs comes from the directory listing, which rarely fails —
+    // use the current poll's listing so the "Show last output" row
+    // stays pointed at the freshest file even mid-degradation.
+    recentLogs: current.recentLogs,
+    polledAt: current.polledAt,
+  };
+}
+
+/**
+ * Snapshot-aware wrapper around `readCurrentState`. Tracks consecutive
+ * read failures across polls per SPEC §16.2:
+ *
+ *   - If the current read fully succeeded (collections populated, no
+ *     status.error, no per-collection error), reset counter to 0.
+ *   - Otherwise, increment `prev?.consecutiveReadFailures ?? 0` by 1.
+ *     When `prev` carries a non-empty collections list, synthesize a
+ *     last-good CurrentState from it so the menu renderer has something
+ *     useful to display.
+ *
+ * The caller (qmd.30s.ts) is responsible for forcing tier=red when the
+ * counter reaches 3; this wrapper only computes and exposes the count.
+ */
+export async function readCurrentStateWithSnapshot(
+  config: Config,
+  prev: PollSnapshot | null,
+  sources?: Partial<StateSources>,
+): Promise<
+  { state: CurrentState; consecutiveReadFailures: number; degraded: boolean }
+> {
+  const current = await readCurrentState(config, sources);
+
+  // "Read OK" means collections populated and no errors anywhere.
+  // Per SPEC §16.1, sdk:open / sdk:read-timeout / per-row errors all
+  // count toward the consecutive-failure counter.
+  const hasReadError = !!current.status.error ||
+    current.collections.length === 0 ||
+    current.collections.some((c) => c.error);
+
+  if (!hasReadError) {
+    return {
+      state: current,
+      consecutiveReadFailures: 0,
+      degraded: false,
+    };
+  }
+
+  const consecutiveReadFailures = (prev?.consecutiveReadFailures ?? 0) + 1;
+
+  // If prev has a usable last-good state, synthesize from it so the
+  // menu shows the user something more useful than an empty shell.
+  if (prev && prev.collections.length > 0) {
+    return {
+      state: synthesizeLastGoodState(prev, current),
+      consecutiveReadFailures,
+      degraded: true,
+    };
+  }
+
+  // No usable prev — return the partial current state so the menu can
+  // still render the (mostly empty) snapshot with the degradation
+  // header.
+  return {
+    state: current,
+    consecutiveReadFailures,
+    degraded: true,
   };
 }

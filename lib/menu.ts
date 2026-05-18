@@ -10,6 +10,7 @@ import type {
 } from "./types.ts";
 import { compactDuration, relativeTime } from "./time.ts";
 import { actionLabel, computeTier } from "./rollup.ts";
+import { cacheDir } from "./persistence.ts";
 
 // ─── Icon glyphs (SPEC §9.3) ──────────────────────────────────
 //
@@ -572,10 +573,17 @@ function renderGlobalActionsSection(
  * §10.2). The row is omitted entirely when no logs are present, so a
  * fresh install doesn't surface a row that would `open -t` a missing
  * path.
+ *
+ * When `errorContext.consecutiveFailures > 0`, an additional "Show
+ * last error" row is appended pointing at `${CACHE_DIR}/error.log`
+ * (SPEC §10.4, §16.2). This row is always emitted under degradation
+ * regardless of whether the log file currently exists — the user is
+ * told the read failed and given a one-click path to the diagnostic.
  */
 function renderUtilityFooter(
   endpoint: string,
   recentLogs: CurrentState["recentLogs"],
+  errorContext?: ErrorContext,
 ): string[] {
   // `bash -c "echo -n '<endpoint>' | pbcopy"` keeps the endpoint as a
   // single shell argument so SwiftBar's param-splitting doesn't mangle
@@ -595,6 +603,12 @@ function renderUtilityFooter(
       `📄 Show last output | bash="open" param1="-t" param2="${newest.path}" terminal=false`,
     );
   }
+  if (errorContext && errorContext.consecutiveFailures > 0) {
+    const errorLogPath = `${cacheDir()}/error.log`;
+    lines.push(
+      `⚠ Show last error | bash="open" param1="-t" param2="${errorLogPath}" terminal=false`,
+    );
+  }
   return lines;
 }
 
@@ -603,6 +617,46 @@ function renderPreferencesFooter(): string[] {
   return [
     `⚙ Preferences… | bash="open" param1="-t" param2=$HOME/.config/swiftbar-qmd/config.yml terminal=false shortcut=CmdOrCtrl+Comma`,
     `ⓘ About swiftbar-qmd | bash="open" param1="https://github.com/ggfevans/swiftbar-qmd" terminal=false`,
+  ];
+}
+
+// ─── Error-state degradation (SPEC §10.4, §16.2) ──────────────
+
+/**
+ * Context the caller passes to surface a degraded-read state. When
+ * `consecutiveFailures > 0` the menu renders a top-of-dropdown
+ * "⚠ Status read failed — using last poll (Nm ago)" header and a
+ * "Show last error" footer row.
+ *
+ * `lastGoodAt` is the pollTimestamp of the snapshot whose data is
+ * being reused; passing `null` falls back to omitting the "(Nm ago)"
+ * suffix.
+ */
+export type ErrorContext = {
+  lastGoodAt: Date | null;
+  consecutiveFailures: number;
+};
+
+/**
+ * Render the degradation header. Emitted only when the caller has
+ * supplied an `errorContext` with `consecutiveFailures > 0`, OR when
+ * the rendered state itself carries `status.error` (defensive fallback
+ * for callers that forgot to pass errorContext).
+ */
+function renderErrorHeader(
+  state: CurrentState,
+  errorContext: ErrorContext | undefined,
+): string[] {
+  const failures = errorContext?.consecutiveFailures ?? 0;
+  const stateHasError = !!state.status.error;
+  if (failures === 0 && !stateHasError) return [];
+
+  const lastGoodAt = errorContext?.lastGoodAt ?? null;
+  const relative = lastGoodAt ? relativeTime(lastGoodAt, state.polledAt) : null;
+  const suffix = relative ? ` (${relative})` : "";
+  return [
+    `⚠ Status read failed — using last poll${suffix} | size=10 color=${TIER_HEX.red} shell=`,
+    "---",
   ];
 }
 
@@ -622,20 +676,31 @@ function renderPreferencesFooter(): string[] {
  * the runner shows the dialog before spawning.
  *
  * The "📄 Show last output" row appears in the utility footer when
- * `state.recentLogs` is non-empty (SPEC §10.2). Remaining layered
- * features:
- *   - (deferred to step 15: error-state fallback header / footer)
+ * `state.recentLogs` is non-empty (SPEC §10.2).
+ *
+ * Error-state degradation (SPEC §10.4, §16.2): when `errorContext`
+ * indicates consecutive read failures, a "⚠ Status read failed — using
+ * last poll (Nm ago)" header is prepended and a "Show last error"
+ * footer row is appended pointing at the error log. The caller (the
+ * poll loop in qmd.30s.ts) composes these inputs from
+ * `readCurrentStateWithSnapshot`.
  */
 export function renderMenu(
   state: CurrentState,
   tier: TierReason,
   config: Config,
+  errorContext?: ErrorContext,
 ): string {
   const pluginPath = getPluginPath();
   const lines: string[] = [];
 
   lines.push(renderIconLine(tier.tier, tier.drivers));
   lines.push("---");
+
+  // Error-state header sits at the very top of the dropdown, before
+  // the Status section. SPEC §10.4 puts it ahead of everything so the
+  // user sees the degraded read at a glance.
+  lines.push(...renderErrorHeader(state, errorContext));
 
   lines.push(...renderStatusSection(state, config));
   lines.push("---");
@@ -646,7 +711,13 @@ export function renderMenu(
   lines.push(...renderGlobalActionsSection(state, pluginPath));
   lines.push("---");
 
-  lines.push(...renderUtilityFooter(state.daemon.endpoint, state.recentLogs));
+  lines.push(
+    ...renderUtilityFooter(
+      state.daemon.endpoint,
+      state.recentLogs,
+      errorContext,
+    ),
+  );
   lines.push("---");
 
   lines.push(...renderPreferencesFooter());

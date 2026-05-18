@@ -1,5 +1,8 @@
 import { assertEquals, assertNotEquals } from "@std/assert";
-import { readCurrentState } from "../lib/state.ts";
+import {
+  readCurrentState,
+  readCurrentStateWithSnapshot,
+} from "../lib/state.ts";
 import type {
   ActionId,
   CollectionState,
@@ -8,6 +11,7 @@ import type {
   FailureRecord,
   IndexStatus,
   JobInfo,
+  PollSnapshot,
 } from "../lib/types.ts";
 import type { StateSources } from "../lib/state.ts";
 
@@ -456,4 +460,165 @@ Deno.test("readCurrentState: mixed alive/dead jobs are partitioned correctly", a
   assertEquals(appendCalls[0].exitCode, 2);
   assertEquals(deleteCalls.length, 1);
   assertEquals(deleteCalls[0].action, "embed-all");
+});
+
+// ─── readCurrentStateWithSnapshot (SPEC §16.2) ────────────────
+//
+// The snapshot-aware wrapper tracks consecutive read failures across
+// polls and synthesizes a "last good" CurrentState from the previous
+// snapshot when the current read failed. The forced-red escalation at
+// 3 failures is the caller's responsibility (qmd.30s.ts) — these tests
+// only verify the counter climbs / resets correctly.
+
+function makePrevSnapshot(
+  consecutiveReadFailures: number,
+  collections?: CollectionState[],
+): PollSnapshot {
+  return {
+    pollTimestamp: "2026-05-17T11:00:00.000Z",
+    daemon: {
+      status: "running",
+      pid: 1234,
+      uptimeSeconds: 3600,
+      endpoint: "http://localhost:8181",
+    },
+    collections: collections ?? [makeCollection("default")],
+    recentOpFailures: [],
+    inFlightJobs: [],
+    computedTier: "green",
+    tierDrivers: [],
+    recentlyNotified: {},
+    consecutiveReadFailures,
+  };
+}
+
+Deno.test("readCurrentStateWithSnapshot: prev=null + readCollections throws → counter=1, degraded", async () => {
+  const result = await readCurrentStateWithSnapshot(
+    makeConfig(),
+    null,
+    makeSources({
+      readCollections: () => Promise.reject(new Error("sdk-boom")),
+      readIndexStatus: () => Promise.reject(new Error("status-boom")),
+    }),
+  );
+
+  assertEquals(result.consecutiveReadFailures, 1);
+  assertEquals(result.degraded, true);
+  // With no prev to synthesize from, we keep the partial current state.
+  assertEquals(result.state.collections, []);
+});
+
+Deno.test("readCurrentStateWithSnapshot: prev=1 + read fails → counter=2, degraded with prev state", async () => {
+  const prev = makePrevSnapshot(1, [makeCollection("gVault")]);
+  const result = await readCurrentStateWithSnapshot(
+    makeConfig(),
+    prev,
+    makeSources({
+      readCollections: () => Promise.reject(new Error("sdk-boom")),
+      readIndexStatus: () => Promise.reject(new Error("status-boom")),
+    }),
+  );
+
+  assertEquals(result.consecutiveReadFailures, 2);
+  assertEquals(result.degraded, true);
+  // Synthesized last-good state pulls collections from prev.
+  assertEquals(result.state.collections.length, 1);
+  assertEquals(result.state.collections[0].name, "gVault");
+  // status.error should be set so the menu renders the degradation header.
+  assertNotEquals(result.state.status.error, undefined);
+});
+
+Deno.test("readCurrentStateWithSnapshot: prev=2 + read fails → counter=3 (caller forces red)", async () => {
+  const prev = makePrevSnapshot(2);
+  const result = await readCurrentStateWithSnapshot(
+    makeConfig(),
+    prev,
+    makeSources({
+      readCollections: () => Promise.reject(new Error("a")),
+      readIndexStatus: () => Promise.reject(new Error("b")),
+      probeDaemon: () => Promise.reject(new Error("c")),
+    }),
+  );
+
+  assertEquals(result.consecutiveReadFailures, 3);
+  assertEquals(result.degraded, true);
+});
+
+Deno.test("readCurrentStateWithSnapshot: prev=3 + success → counter resets to 0, not degraded", async () => {
+  const prev = makePrevSnapshot(3);
+  const result = await readCurrentStateWithSnapshot(
+    makeConfig(),
+    prev,
+    makeSources(),
+  );
+
+  assertEquals(result.consecutiveReadFailures, 0);
+  assertEquals(result.degraded, false);
+  assertEquals(result.state.collections.length, 1);
+  assertEquals(result.state.collections[0].name, "default");
+});
+
+Deno.test("readCurrentStateWithSnapshot: synthesized state preserves prev daemon + inFlightJobs", async () => {
+  const liveJob: JobInfo = {
+    action: "update-all" as ActionId,
+    pid: 4242,
+    startedAt: new Date("2026-05-17T11:50:00.000Z"),
+    command: ["qmd", "update"],
+    logPath: "/tmp/inflight.log",
+  };
+  const prev: PollSnapshot = {
+    pollTimestamp: "2026-05-17T11:00:00.000Z",
+    daemon: {
+      status: "running",
+      pid: 9876,
+      uptimeSeconds: 7200,
+      endpoint: "http://localhost:8181",
+    },
+    collections: [makeCollection("alpha")],
+    recentOpFailures: [makeFailure()],
+    inFlightJobs: [liveJob],
+    computedTier: "amber",
+    tierDrivers: ["something"],
+    recentlyNotified: {},
+    consecutiveReadFailures: 0,
+  };
+
+  const result = await readCurrentStateWithSnapshot(
+    makeConfig(),
+    prev,
+    makeSources({
+      readCollections: () => Promise.reject(new Error("read-fail")),
+      readIndexStatus: () => Promise.reject(new Error("status-fail")),
+    }),
+  );
+
+  assertEquals(result.degraded, true);
+  assertEquals(result.consecutiveReadFailures, 1);
+  // Synthesized state pulls daemon, inFlightJobs, recentFailures from prev.
+  assertEquals(result.state.daemon.status, "running");
+  assertEquals(result.state.daemon.pid, 9876);
+  assertEquals(result.state.inFlightJobs.length, 1);
+  assertEquals(result.state.inFlightJobs[0].pid, 4242);
+  assertEquals(result.state.recentFailures.length, 1);
+});
+
+Deno.test("readCurrentStateWithSnapshot: collections with per-row error increments counter", async () => {
+  // Per SPEC §16.1 sdk:open and per-row errors all increment the
+  // consecutive-failures counter. A populated-but-erroring collection
+  // is treated as a failed read.
+  const erroringCollection: CollectionState = {
+    ...makeCollection("default"),
+    error: "stat failed",
+  };
+
+  const result = await readCurrentStateWithSnapshot(
+    makeConfig(),
+    makePrevSnapshot(0),
+    makeSources({
+      readCollections: () => Promise.resolve([erroringCollection]),
+    }),
+  );
+
+  assertEquals(result.consecutiveReadFailures, 1);
+  assertEquals(result.degraded, true);
 });

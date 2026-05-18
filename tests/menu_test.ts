@@ -179,3 +179,76 @@ Deno.test("renderMenu: 'Show last output' sits in the utility footer (after 'Sho
     );
   }
 });
+
+// ─── Error-state degradation (SPEC §10.4, §16.2) ──────────────
+
+Deno.test("renderMenu: no error context → no '⚠ Status read failed' header", () => {
+  const out = renderMenu(makeState([]), GREEN_TIER, makeConfig());
+
+  assertEquals(out.includes("Status read failed"), false);
+  assertEquals(out.includes("Show last error"), false);
+});
+
+Deno.test("renderMenu: errorContext.consecutiveFailures > 0 → degradation header at top + 'Show last error' footer", () => {
+  // The header sits BEFORE the Status section so a glance at the menu
+  // surfaces the degraded read. SPEC §10.4 puts it at the very top.
+  const lastGoodAt = new Date("2026-05-17T11:55:00.000Z");
+  const out = renderMenu(
+    makeState([]),
+    GREEN_TIER,
+    makeConfig(),
+    { lastGoodAt, consecutiveFailures: 1 },
+  );
+
+  assertStringIncludes(out, "Status read failed");
+  // The relative-time copy uses lib/time.ts → "5 minutes ago" for a 5
+  // minute gap. The exact phrasing is asserted to lock the SPEC §10.4
+  // mockup ("using last poll (Nm ago)").
+  assertStringIncludes(out, "using last poll");
+  // The header MUST appear before the Status section.
+  const headerIdx = out.indexOf("Status read failed");
+  const statusIdx = out.indexOf("Status |");
+  if (headerIdx < 0 || statusIdx < 0 || headerIdx > statusIdx) {
+    throw new Error(
+      `expected degradation header before Status section (header=${headerIdx}, status=${statusIdx})\n${out}`,
+    );
+  }
+
+  // And the "Show last error" footer row must be present.
+  assertStringIncludes(out, "Show last error");
+  const row = out.split("\n").find((l) => l.includes("Show last error"));
+  if (!row) throw new Error("expected 'Show last error' row");
+  assertStringIncludes(row, `bash="open"`);
+  assertStringIncludes(row, `param1="-t"`);
+  assertStringIncludes(row, `error.log`);
+});
+
+Deno.test("renderMenu: errorContext.consecutiveFailures = 0 → no degradation rows", () => {
+  // A clean poll right after recovery (counter reset to 0) should
+  // render without the degradation header even if errorContext is
+  // passed.
+  const out = renderMenu(
+    makeState([]),
+    GREEN_TIER,
+    makeConfig(),
+    { lastGoodAt: null, consecutiveFailures: 0 },
+  );
+
+  assertEquals(out.includes("Status read failed"), false);
+  assertEquals(out.includes("Show last error"), false);
+});
+
+Deno.test("renderMenu: status.error set (no errorContext) → degradation header rendered", () => {
+  // Defensive fallback: even if the caller forgot to pass errorContext,
+  // a populated status.error indicates a read failure and the header
+  // should still appear. SPEC §10.4: "state.collections is empty and
+  // state.status.error is set" — we lean on status.error alone here.
+  const state: CurrentState = {
+    ...makeState([]),
+    collections: [],
+    status: { ...makeStatus(), error: "sdk timeout" },
+  };
+  const out = renderMenu(state, GREEN_TIER, makeConfig());
+
+  assertStringIncludes(out, "Status read failed");
+});

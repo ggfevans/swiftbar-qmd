@@ -21,10 +21,16 @@ import {
   readSnapshot,
   writeSnapshot,
 } from "./lib/persistence.ts";
-import { readCurrentState } from "./lib/state.ts";
+import { readCurrentStateWithSnapshot } from "./lib/state.ts";
 import { computeTierWithReason } from "./lib/rollup.ts";
 import { buildSnapshot, diffStates, emitNotifications } from "./lib/notify.ts";
+import { logError } from "./lib/log.ts";
 import type { ActionId } from "./lib/types.ts";
+
+// Path to the error log file. Used both by the top-level fence's
+// emergency menu and the menu degradation footer (rendered by
+// lib/menu.ts when consecutiveReadFailures > 0).
+const ERROR_LOG_PATH = `${cacheDir()}/error.log`;
 
 async function main(): Promise<void> {
   // Action invocation path (SPEC §13.1). When SwiftBar re-invokes the
@@ -71,12 +77,23 @@ async function main(): Promise<void> {
   await ensureCacheTree();
   const prevSnapshot = await readSnapshot();
 
-  // State reader (step 7). Composes SDK, HTTP, and FS sources into a
-  // single CurrentState.
-  const state = await readCurrentState(config);
+  // State reader (step 7) wrapped by the snapshot-aware degrader
+  // (step 15 / SPEC §16.2). On read failure with a usable prev
+  // snapshot, `state` is the synthesized last-good state; otherwise
+  // it's the raw current poll. `degraded` and `consecutiveReadFailures`
+  // flow into the renderer to surface the degradation header / footer.
+  const { state, consecutiveReadFailures } = await readCurrentStateWithSnapshot(
+    config,
+    prevSnapshot,
+  );
 
-  // Rollup (step 8). Compute the tier from current state.
+  // Rollup (step 8). Compute the tier from the (possibly synthesized)
+  // state. Force red on three consecutive read failures per SPEC §16.2.
   const tier = computeTierWithReason(state, config);
+  if (consecutiveReadFailures >= 3) {
+    tier.tier = "red";
+    tier.drivers.unshift("Status reads failed 3 polls in a row");
+  }
 
   // Notifications (step 14). Diff against the previous snapshot,
   // assemble the new snapshot, fire opt-in notifications, then persist.
@@ -84,13 +101,24 @@ async function main(): Promise<void> {
   // SwiftBar drops the stdout pipe mid-render.
   const events = diffStates(prevSnapshot, state, config);
   const newSnapshot = buildSnapshot(state, tier, prevSnapshot);
+  // buildSnapshot carries `consecutiveReadFailures` from prev by
+  // default; overwrite with the value computed by
+  // readCurrentStateWithSnapshot so the counter reflects this poll.
+  newSnapshot.consecutiveReadFailures = consecutiveReadFailures;
   await emitNotifications(events, newSnapshot, config);
   await writeSnapshot(newSnapshot);
 
-  // Render the §10 healthy menu (step 9). In-flight rewriting and
-  // per-collection submenus are layered in via state.ts (step 12);
-  // error-state fallback lands in step 15.
-  console.log(renderMenu(state, tier, config));
+  // Render the §10 healthy menu (step 9). Error-state degradation
+  // (SPEC §10.4): when consecutiveReadFailures > 0, the renderer
+  // prepends "⚠ Status read failed — using last poll (Nm ago)" and
+  // appends "Show last error".
+  const errorContext = consecutiveReadFailures > 0
+    ? {
+      lastGoodAt: prevSnapshot ? new Date(prevSnapshot.pollTimestamp) : null,
+      consecutiveFailures: consecutiveReadFailures,
+    }
+    : undefined;
+  console.log(renderMenu(state, tier, config, errorContext));
 
   // Cleanup pass (SPEC §15.3): trim recent-failures past the amber
   // window and rotate log files down to `retain_per_action`. Both
@@ -102,4 +130,20 @@ async function main(): Promise<void> {
   Deno.exit(0);
 }
 
-await main();
+// Top-level fence per SPEC §16.3. Any uncaught throw inside `main()`
+// lands here; we log it and emit a minimal emergency menu so SwiftBar
+// renders something sensible instead of a blank icon. Exit 0 keeps
+// SwiftBar from flagging the plugin as crashed.
+try {
+  await main();
+} catch (e) {
+  const err = e instanceof Error ? e : new Error(String(e));
+  await logError("main", "unhandled", err);
+  console.log("⚠");
+  console.log("---");
+  console.log(`Unhandled error: ${err.message} | shell=`);
+  console.log(
+    `Show error log | bash="open" param1="-t" param2="${ERROR_LOG_PATH}" terminal=false`,
+  );
+  Deno.exit(0);
+}
