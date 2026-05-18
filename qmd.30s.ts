@@ -8,11 +8,13 @@
 // <swiftbar.dependencies>deno,qmd</swiftbar.dependencies>
 // <swiftbar.abouturl>https://github.com/ggfevans/swiftbar-qmd</swiftbar.abouturl>
 
+import { join } from "@std/path";
 import { runAction } from "./lib/actions.ts";
 import { loadConfig } from "./lib/config.ts";
 import { detectFirstRunState } from "./lib/detect.ts";
 import { renderFirstRunMenu, renderMenu } from "./lib/menu.ts";
 import {
+  cacheDir,
   ensureCacheTree,
   pruneFailuresOlderThan,
   pruneLogs,
@@ -40,6 +42,23 @@ async function main(): Promise<void> {
   }
 
   const { config } = await loadConfig();
+
+  // Recheck sentinel (SPEC §13 / "Re-check now"): if the user just
+  // clicked the first-run "Re-check now" entry, the action runner
+  // wrote `${CACHE_DIR}/sentinels/recheck`. Consume it here so the
+  // sentinel doesn't persist across polls. Every poll re-renders the
+  // menu regardless, so the sentinel is mostly cosmetic — its removal
+  // simply prevents it from accumulating on disk and provides a
+  // visible "I saw your click" signal during local debugging.
+  const recheckSentinel = join(cacheDir(), "sentinels", "recheck");
+  try {
+    await Deno.stat(recheckSentinel);
+    await Deno.remove(recheckSentinel);
+  } catch {
+    // Missing file (the common case) or removal race; either way the
+    // poll proceeds normally.
+  }
+
   const firstRun = await detectFirstRunState(config);
   if (firstRun !== "ok") {
     console.log(renderFirstRunMenu(firstRun, config));

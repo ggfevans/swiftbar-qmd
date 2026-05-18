@@ -102,6 +102,9 @@ function makeSources(
     probeDaemon: () => Promise.resolve(makeDaemon()),
     readJobPidFiles: () => Promise.resolve([makeJob()]),
     readRecentFailures: () => Promise.resolve([makeFailure()]),
+    // Default to an empty log listing; tests that exercise recentLogs
+    // override this with deterministic LogFileInfo entries.
+    readLogs: () => Promise.resolve([]),
     // The mocked job in `makeJob()` has pid=9999 (unlikely to be live).
     // Tests that don't override `isProcessAlive` need it to claim alive
     // so the completion loop doesn't try to clean up a fictional job

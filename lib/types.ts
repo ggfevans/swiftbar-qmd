@@ -35,6 +35,13 @@ export interface CurrentState {
   daemon: DaemonState;
   inFlightJobs: JobInfo[];
   recentFailures: FailureRecord[];
+  /**
+   * Log files in `${CACHE_DIR}/logs/`, newest first by mtime. Used by
+   * the menu renderer for the "📄 Show last output" row (SPEC §10.2)
+   * and reserved for the v1.1 "Recent jobs ▸" submenu — storing the
+   * full list now avoids a schema migration when that lands.
+   */
+  recentLogs: LogFileInfo[];
   polledAt: Date;
 }
 

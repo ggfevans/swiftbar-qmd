@@ -181,6 +181,7 @@ function collectionTier(
     },
     inFlightJobs: [],
     recentFailures: [],
+    recentLogs: [],
     polledAt,
   };
   return computeTier(slice, config);
@@ -564,18 +565,37 @@ function renderGlobalActionsSection(
   return lines;
 }
 
-/** Renders the Copy URL / Show status footer block. */
-function renderUtilityFooter(endpoint: string): string[] {
+/**
+ * Renders the Copy URL / Show status footer block. When at least one
+ * log file exists on disk (newest-first via state.recentLogs), append
+ * a "📄 Show last output" row pointing at the most recent log (SPEC
+ * §10.2). The row is omitted entirely when no logs are present, so a
+ * fresh install doesn't surface a row that would `open -t` a missing
+ * path.
+ */
+function renderUtilityFooter(
+  endpoint: string,
+  recentLogs: CurrentState["recentLogs"],
+): string[] {
   // `bash -c "echo -n '<endpoint>' | pbcopy"` keeps the endpoint as a
   // single shell argument so SwiftBar's param-splitting doesn't mangle
   // it. Single-quotes around the endpoint guard against rare URL
   // characters; if the endpoint itself ever contained a single quote
   // we'd need to escape it, but daemon URLs in this plugin never do.
   const safeEndpoint = endpoint.replace(/'/g, "'\\''");
-  return [
+  const lines = [
     `⧉ Copy MCP endpoint URL | bash="bash" param1="-c" param2="echo -n '${safeEndpoint}' | pbcopy" terminal=false`,
     `›_ Show qmd status in Terminal | bash="qmd" param1="status" terminal=true`,
   ];
+  if (recentLogs.length > 0) {
+    // state.recentLogs is sorted newest-first by lib/state.ts before
+    // being handed to the renderer; index 0 is the freshest log.
+    const newest = recentLogs[0];
+    lines.push(
+      `📄 Show last output | bash="open" param1="-t" param2="${newest.path}" terminal=false`,
+    );
+  }
+  return lines;
 }
 
 /** Renders the Preferences / About footer block (matches first-run menus). */
@@ -594,9 +614,16 @@ function renderPreferencesFooter(): string[] {
  * In-flight job rendering (SPEC §10.3) is now wired in: when
  * `state.inFlightJobs` is non-empty, the Status section gains
  * "⟳ Running:" rows and the matching action rows are rewritten as
- * "Running: <id>… (Nm)" with `disabled=true`. Remaining layered
+ * "Running: <id>… (Nm)" with `disabled=true`.
+ *
+ * Confirmation dialogs for destructive actions (force-reembed,
+ * cleanup) are gated inside `runAction` (lib/actions.ts), not here —
+ * the menu row simply re-invokes the plugin with `--action <id>` and
+ * the runner shows the dialog before spawning.
+ *
+ * The "📄 Show last output" row appears in the utility footer when
+ * `state.recentLogs` is non-empty (SPEC §10.2). Remaining layered
  * features:
- *   - (deferred to step 13: confirmation dialogs for force-reembed/cleanup)
  *   - (deferred to step 15: error-state fallback header / footer)
  */
 export function renderMenu(
@@ -619,7 +646,7 @@ export function renderMenu(
   lines.push(...renderGlobalActionsSection(state, pluginPath));
   lines.push("---");
 
-  lines.push(...renderUtilityFooter(state.daemon.endpoint));
+  lines.push(...renderUtilityFooter(state.daemon.endpoint, state.recentLogs));
   lines.push("---");
 
   lines.push(...renderPreferencesFooter());

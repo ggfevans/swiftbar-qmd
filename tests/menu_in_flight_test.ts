@@ -79,6 +79,7 @@ function makeState(jobs: JobInfo[]): CurrentState {
     },
     inFlightJobs: jobs,
     recentFailures: [],
+    recentLogs: [],
     polledAt: POLLED_AT,
   };
 }

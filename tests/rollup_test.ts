@@ -78,6 +78,10 @@ function buildState(overrides: StateOverrides = {}): CurrentState {
     daemon: overrides.daemon ?? buildDaemon(),
     inFlightJobs: overrides.inFlightJobs ?? [],
     recentFailures: overrides.recentFailures ?? [],
+    // rollup is independent of recentLogs; the field exists on
+    // CurrentState since step 13 (SPEC §10.2) so we satisfy the
+    // shape with an empty list.
+    recentLogs: [],
     polledAt: overrides.polledAt ?? POLLED_AT,
   };
 }

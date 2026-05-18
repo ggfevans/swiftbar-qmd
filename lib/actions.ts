@@ -50,6 +50,12 @@ export type ActionDeps = {
   runQmdContextList: (collection: string) => Promise<string>;
   /** Display the qmd-context output via osascript. Blocks until OK. */
   showContextDialog: (collection: string, output: string) => Promise<void>;
+  /**
+   * Show a Cancel/<proceedLabel> confirmation dialog (SPEC §11.2).
+   * Returns true if the user clicked the proceed button, false on
+   * Cancel, timeout, or any error. Production impl uses osascript.
+   */
+  confirmDialog: (message: string, proceedLabel: string) => Promise<boolean>;
   /** Exit the runner cleanly. Tests record the call instead of exiting. */
   exit: (code: number) => void;
 };
@@ -142,7 +148,7 @@ async function productionRunQmdContextList(
 }
 
 /** AppleScript-escape a string for embedding inside double quotes. */
-function escapeForAppleScript(s: string): string {
+export function escapeForAppleScript(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
@@ -180,6 +186,44 @@ async function productionShowContextDialog(
   }
 }
 
+/**
+ * Show a Cancel/<proceedLabel> dialog via osascript (SPEC §11.2).
+ *
+ * The dialog defaults to Cancel, so pressing Enter or letting the
+ * 60-second timeout elapse both behave as cancel. The function returns
+ * true ONLY when stdout contains `button returned:<proceedLabel>` —
+ * any other outcome (Cancel button, timeout exit, osascript spawn
+ * error) collapses to false so destructive actions stay safe by
+ * default.
+ */
+async function productionConfirmDialog(
+  message: string,
+  proceedLabel: string,
+): Promise<boolean> {
+  const safeMessage = escapeForAppleScript(message);
+  const safeProceed = escapeForAppleScript(proceedLabel);
+  const script =
+    `display dialog "${safeMessage}" with title "swiftbar-qmd" buttons {"Cancel", "${safeProceed}"} default button "Cancel" with icon caution`;
+  try {
+    const proc = new Deno.Command("osascript", {
+      args: ["-e", script],
+      stdout: "piped",
+      stderr: "null",
+    });
+    const { stdout, code } = await proc.output();
+    if (code !== 0) return false;
+    const text = new TextDecoder().decode(stdout);
+    return text.includes(`button returned:${proceedLabel}`);
+  } catch (err) {
+    await logError(
+      "actions",
+      `confirmDialog: osascript failed for "${proceedLabel}"`,
+      err instanceof Error ? err : new Error(String(err)),
+    );
+    return false;
+  }
+}
+
 const PRODUCTION_DEPS: ActionDeps = {
   readJobPidFile: productionReadJobPidFile,
   writeJobPidFile: productionWriteJobPidFile,
@@ -188,6 +232,7 @@ const PRODUCTION_DEPS: ActionDeps = {
   touchSentinel: productionTouchSentinel,
   runQmdContextList: productionRunQmdContextList,
   showContextDialog: productionShowContextDialog,
+  confirmDialog: productionConfirmDialog,
   exit: (code) => Deno.exit(code),
 };
 
@@ -285,14 +330,13 @@ function buildLogPath(
  *   - show-context: runs `qmd context list -c <name>` synchronously
  *     and shows the output in an osascript dialog.
  *
- * Confirmation dialogs for `force-reembed-collection` and `cleanup`
- * (deferred to step 13: confirmation dialogs) are NOT implemented
- * here; the runner spawns those actions immediately. The menu layer
- * will gate them with a dialog in step 13.
+ * Destructive actions (`force-reembed-collection`, `cleanup`) gate
+ * on `confirmDialog` per SPEC §11.2 — the runner returns silently if
+ * the user cancels or the dialog times out. The osascript invocation
+ * is injected via the dep so tests can simulate either branch.
  *
  * Completion detection (PID liveness, log-tail EXIT_CODE parsing,
- * failure notifications) (deferred to step 12: action completion +
- * in-flight UI) lives in the poll cycle, not the runner.
+ * failure notifications) lives in the poll cycle, not the runner.
  *
  * Never throws. On invalid args or spawn failure, logs and returns.
  */
@@ -311,6 +355,7 @@ export async function runAction(
       PRODUCTION_DEPS.runQmdContextList,
     showContextDialog: deps?.showContextDialog ??
       PRODUCTION_DEPS.showContextDialog,
+    confirmDialog: deps?.confirmDialog ?? PRODUCTION_DEPS.confirmDialog,
     exit: deps?.exit ?? PRODUCTION_DEPS.exit,
   };
 
@@ -370,6 +415,29 @@ export async function runAction(
       );
       return;
     }
+  }
+
+  // ── Confirmation dialogs for destructive actions (SPEC §11.2). ─
+  //
+  // Force re-embed wipes & recomputes every chunk for a collection;
+  // cleanup deletes orphaned cache data. Both must surface a confirm
+  // before we touch the qmd CLI. Args are already validated above, so
+  // the collection name interpolated into the message has passed
+  // SAFE_COLLECTION_NAME — no AppleScript-injection risk beyond the
+  // string escaping inside productionConfirmDialog.
+  if (id === "force-reembed-collection") {
+    const ok = await d.confirmDialog(
+      `Force re-embed all chunks in ${collection}? This will take several minutes.`,
+      "Re-embed",
+    );
+    if (!ok) return;
+  }
+  if (id === "cleanup") {
+    const ok = await d.confirmDialog(
+      "Clean up orphaned data from the qmd cache? This is generally safe but cannot be undone.",
+      "Clean up",
+    );
+    if (!ok) return;
   }
 
   // ── Build the command spec. ───────────────────────────────

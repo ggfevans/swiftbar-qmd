@@ -7,11 +7,13 @@ import type {
   FailureRecord,
   IndexStatus,
   JobInfo,
+  LogFileInfo,
 } from "./types.ts";
 import { withTimeout } from "./time.ts";
 import {
   appendFailure as productionAppendFailure,
   deleteJobPidFile as productionDeleteJobPidFile,
+  logsDirContents as productionLogsDirContents,
   readJobPidFiles as productionReadJobPidFiles,
   readRecentFailures as productionReadRecentFailures,
 } from "./persistence.ts";
@@ -44,6 +46,13 @@ export type StateSources = {
   probeDaemon: (config: Config) => Promise<DaemonState>;
   readJobPidFiles: () => Promise<JobInfo[]>;
   readRecentFailures: () => Promise<FailureRecord[]>;
+  /**
+   * Enumerate log files in `${CACHE_DIR}/logs/` — wraps
+   * `persistence.logsDirContents` in production. Caller sorts the
+   * result newest-first by mtime so `state.recentLogs[0]` is the
+   * "Show last output" target (SPEC §10.2).
+   */
+  readLogs: () => Promise<LogFileInfo[]>;
   isProcessAlive: (pid: number) => boolean;
   readExitCodeFromLog: (logPath: string) => Promise<number>;
   appendFailure: (failure: FailureRecord) => Promise<void>;
@@ -334,6 +343,7 @@ const PRODUCTION_SOURCES: StateSources = {
   probeDaemon: productionProbeDaemon,
   readJobPidFiles: productionReadJobPidFiles,
   readRecentFailures: productionReadRecentFailures,
+  readLogs: productionLogsDirContents,
   isProcessAlive: productionIsProcessAlive,
   readExitCodeFromLog: productionReadExitCodeFromLog,
   appendFailure: productionAppendFailure,
@@ -365,6 +375,7 @@ export async function readCurrentState(
       PRODUCTION_SOURCES.readJobPidFiles,
     readRecentFailures: sources.readRecentFailures ??
       PRODUCTION_SOURCES.readRecentFailures,
+    readLogs: sources.readLogs ?? PRODUCTION_SOURCES.readLogs,
     isProcessAlive: sources.isProcessAlive ??
       PRODUCTION_SOURCES.isProcessAlive,
     readExitCodeFromLog: sources.readExitCodeFromLog ??
@@ -387,12 +398,14 @@ export async function readCurrentState(
     daemonResult,
     jobsResult,
     failuresResult,
+    logsResult,
   ] = await Promise.allSettled([
     s.readCollections(config),
     s.readIndexStatus(config),
     s.probeDaemon(config),
     s.readJobPidFiles(),
     s.readRecentFailures(),
+    s.readLogs(),
   ]);
 
   let collections: CollectionState[];
@@ -546,12 +559,34 @@ export async function readCurrentState(
     );
   }
 
+  // Logs come from the filesystem in directory-listing order; the
+  // "Show last output" row (SPEC §10.2) needs newest first, so we sort
+  // by mtime descending. Anchoring the sort here (rather than in
+  // persistence.logsDirContents) keeps the persistence module's
+  // contract — "directory contents, parsed" — narrow and reusable.
+  let recentLogs: LogFileInfo[];
+  if (logsResult.status === "fulfilled") {
+    recentLogs = [...logsResult.value].sort(
+      (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+    );
+  } else {
+    recentLogs = [];
+    await logError(
+      "state",
+      "readLogs failed",
+      logsResult.reason instanceof Error
+        ? logsResult.reason
+        : new Error(String(logsResult.reason)),
+    );
+  }
+
   return {
     collections,
     status,
     daemon,
     inFlightJobs,
     recentFailures,
+    recentLogs,
     polledAt: new Date(),
   };
 }

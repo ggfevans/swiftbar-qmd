@@ -19,6 +19,7 @@ type Recorder = {
   touchSentinelCalls: string[];
   showContextDialogCalls: Array<{ collection: string; output: string }>;
   runQmdContextListCalls: string[];
+  confirmDialogCalls: Array<{ message: string; proceedLabel: string }>;
   exitCalls: number[];
 };
 
@@ -31,6 +32,7 @@ function makeRecorder(): Recorder {
     touchSentinelCalls: [],
     showContextDialogCalls: [],
     runQmdContextListCalls: [],
+    confirmDialogCalls: [],
     exitCalls: [],
   };
 }
@@ -73,6 +75,13 @@ function makeDeps(
     runQmdContextList: overrides.runQmdContextList ?? ((collection) => {
       rec.runQmdContextListCalls.push(collection);
       return Promise.resolve("mocked qmd context output");
+    }),
+    // Default to "proceed" so existing happy-path tests for cleanup /
+    // force-reembed continue to spawn. Tests that need to exercise the
+    // Cancel branch override this with `() => Promise.resolve(false)`.
+    confirmDialog: overrides.confirmDialog ?? ((message, proceedLabel) => {
+      rec.confirmDialogCalls.push({ message, proceedLabel });
+      return Promise.resolve(true);
     }),
     exit: overrides.exit ?? ((code) => {
       rec.exitCalls.push(code);
@@ -379,5 +388,140 @@ Deno.test("runAction: per-collection log path includes collection suffix", async
     throw new Error(
       `expected '/logs/embed-collection:gVault-' in logPath: ${logPath}`,
     );
+  }
+});
+
+// ─── Confirmation dialogs (SPEC §11.2) ─────────────────────────
+
+Deno.test("runAction: force-reembed-collection → confirmDialog cancelled → no spawn", async () => {
+  const rec = makeRecorder();
+  await runAction(
+    "force-reembed-collection",
+    { collection: "gVault" },
+    makeDeps(rec, {
+      confirmDialog: (message, proceedLabel) => {
+        rec.confirmDialogCalls.push({ message, proceedLabel });
+        return Promise.resolve(false);
+      },
+    }),
+  );
+
+  // Dialog was asked, with the SPEC §11.2 message and proceed label.
+  assertEquals(rec.confirmDialogCalls.length, 1);
+  assertEquals(
+    rec.confirmDialogCalls[0].message,
+    "Force re-embed all chunks in gVault? This will take several minutes.",
+  );
+  assertEquals(rec.confirmDialogCalls[0].proceedLabel, "Re-embed");
+
+  // We MUST NOT have spawned or written a PID file.
+  assertEquals(rec.spawnDetachedCalls.length, 0);
+  assertEquals(rec.writeJobPidFileCalls.length, 0);
+  // The lock check is gated behind the confirm, so it must not have run.
+  assertEquals(rec.readJobPidFileCalls.length, 0);
+  // No process exit either — the runner returns silently.
+  assertEquals(rec.exitCalls, []);
+});
+
+Deno.test("runAction: force-reembed-collection → confirmDialog accepted → spawn proceeds", async () => {
+  const rec = makeRecorder();
+  await runAction(
+    "force-reembed-collection",
+    { collection: "gVault" },
+    makeDeps(rec, {
+      confirmDialog: (message, proceedLabel) => {
+        rec.confirmDialogCalls.push({ message, proceedLabel });
+        return Promise.resolve(true);
+      },
+    }),
+  );
+
+  assertEquals(rec.confirmDialogCalls.length, 1);
+  // Spawn happens, command shape matches §13 mapping for force re-embed.
+  assertEquals(rec.spawnDetachedCalls.length, 1);
+  assertEquals(
+    rec.spawnDetachedCalls[0].commandString,
+    "qmd embed -c gVault -f",
+  );
+  assertEquals(rec.writeJobPidFileCalls.length, 1);
+});
+
+Deno.test("runAction: cleanup → confirmDialog cancelled → no spawn", async () => {
+  const rec = makeRecorder();
+  await runAction(
+    "cleanup",
+    {},
+    makeDeps(rec, {
+      confirmDialog: (message, proceedLabel) => {
+        rec.confirmDialogCalls.push({ message, proceedLabel });
+        return Promise.resolve(false);
+      },
+    }),
+  );
+
+  assertEquals(rec.confirmDialogCalls.length, 1);
+  assertEquals(
+    rec.confirmDialogCalls[0].message,
+    "Clean up orphaned data from the qmd cache? This is generally safe but cannot be undone.",
+  );
+  assertEquals(rec.confirmDialogCalls[0].proceedLabel, "Clean up");
+
+  assertEquals(rec.spawnDetachedCalls.length, 0);
+  assertEquals(rec.writeJobPidFileCalls.length, 0);
+  assertEquals(rec.readJobPidFileCalls.length, 0);
+  assertEquals(rec.exitCalls, []);
+});
+
+Deno.test("runAction: cleanup → confirmDialog accepted → spawn proceeds", async () => {
+  const rec = makeRecorder();
+  await runAction(
+    "cleanup",
+    {},
+    makeDeps(rec, {
+      confirmDialog: (message, proceedLabel) => {
+        rec.confirmDialogCalls.push({ message, proceedLabel });
+        return Promise.resolve(true);
+      },
+    }),
+  );
+
+  assertEquals(rec.confirmDialogCalls.length, 1);
+  assertEquals(rec.spawnDetachedCalls.length, 1);
+  assertEquals(rec.spawnDetachedCalls[0].commandString, "qmd cleanup");
+  assertEquals(rec.writeJobPidFileCalls.length, 1);
+});
+
+Deno.test("runAction: non-destructive actions do not invoke confirmDialog", async () => {
+  // Sanity check: actions outside the gated set (update-all, embed-all,
+  // restart-daemon, etc.) must NEVER trigger a confirm prompt. The test
+  // overrides confirmDialog with a "deny" stub — if any of these called
+  // through, the spawn would be suppressed and the assertion would fail.
+  const nonDestructive: Array<{ id: ActionId; args: Record<string, string> }> =
+    [
+      { id: "update-all", args: {} },
+      { id: "embed-all", args: {} },
+      { id: "update-collection", args: { collection: "gVault" } },
+      { id: "embed-collection", args: { collection: "gVault" } },
+      { id: "restart-daemon", args: {} },
+      { id: "stop-daemon", args: {} },
+      { id: "start-daemon", args: {} },
+    ];
+
+  for (const { id, args } of nonDestructive) {
+    const rec = makeRecorder();
+    await runAction(
+      id,
+      args,
+      makeDeps(rec, {
+        // If anything calls confirmDialog here it's a bug.
+        confirmDialog: (message, proceedLabel) => {
+          rec.confirmDialogCalls.push({ message, proceedLabel });
+          return Promise.resolve(false);
+        },
+      }),
+    );
+
+    assertEquals(rec.confirmDialogCalls.length, 0, `${id} must not confirm`);
+    assertEquals(rec.spawnDetachedCalls.length, 1, `${id} must spawn`);
   }
 });
