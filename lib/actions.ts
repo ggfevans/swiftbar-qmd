@@ -142,8 +142,11 @@ async function productionTryAcquireLock(
   // File exists — check if the process is alive.
   const info = await productionReadJobPidFile(action, collection);
   if (info === null) {
-    // File disappeared between create and read — retry.
-    return productionTryAcquireLock(action, collection);
+    // File is empty or malformed (crash between create and write), or
+    // disappeared between create and read. Remove the stale file and
+    // retry once — bounded, no recursion.
+    await productionDeleteJobPidFile(action, collection);
+    return productionAtomicCreateJobPidFile(action, collection);
   }
   // PID -1 means another runner is mid-spawn (placeholder).
   if (info.pid === -1 || isProcessAlive(info.pid)) {
@@ -594,11 +597,16 @@ export async function runAction(
       logPath,
     });
   } catch (err) {
+    // Placeholder write failed — release the lock so the next poll can
+    // retry. Without this, the empty/malformed PID file would block all
+    // future runs for this (action, collection) pair.
+    await d.deleteJobPidFile(id, collection).catch(() => {});
     await logError(
       "actions",
       `${id}: writeJobPidFile (placeholder) failed`,
       err instanceof Error ? err : new Error(String(err)),
     );
+    return;
   }
 
   let pid: number;

@@ -281,7 +281,28 @@ export function validateConfig(
 
     if ("directory" in l) {
       if (isNonEmptyString(l.directory)) {
-        cfg.logs.directory = expandTilde(l.directory);
+        const expanded = expandTilde(l.directory);
+        // Constrain logs.directory to paths under the cache or config
+        // directories — these are the only paths the Deno allow-write
+        // permission grants. Paths outside these roots would cause
+        // PermissionDenied at runtime and, if interpolated into the bash
+        // -c spawn wrapper, could break shell argument boundaries.
+        const allowedRoots = [
+          expandTilde("~/.cache/swiftbar-qmd"),
+          expandTilde("~/.config/swiftbar-qmd"),
+        ];
+        const isAllowed = allowedRoots.some(
+          (root) => expanded === root || expanded.startsWith(root + "/"),
+        );
+        if (isAllowed) {
+          cfg.logs.directory = expanded;
+        } else {
+          errors.push(
+            `logs.directory: must be under ${
+              allowedRoots.join(" or ")
+            }; falling back to default`,
+          );
+        }
       } else {
         errors.push(
           "logs.directory: must be a non-empty string; falling back to default",

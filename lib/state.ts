@@ -569,12 +569,12 @@ export async function readCurrentState(
       };
       try {
         await s.appendFailure(record);
-        // Track the in-memory record so the returned CurrentState
-        // reflects what we just wrote to disk. Only push on the happy
-        // path — if persistence failed we can't promise the caller a
-        // durable record. The next poll will re-discover and retry.
         newlyRecordedFailures.push(record);
       } catch (err) {
+        // Even though persistence failed, we know the job exited non-zero.
+        // Push the in-memory record so diffStates sees a failure event
+        // rather than treating this as a clean job-complete transition.
+        newlyRecordedFailures.push(record);
         await logError(
           "state",
           `appendFailure failed for ${job.action}${
@@ -603,15 +603,19 @@ export async function readCurrentState(
               recordFailures: retries,
             });
           } catch (writeErr) {
+            // Rewrite failed — the retry counter can't be persisted. If we
+            // leave the file, the next poll reads recordFailures=undefined
+            // and retries forever. Fall through to zombie cleanup instead.
             await logError(
               "state",
               `writeJobPidFile (recordFailures retry) failed for ${job.action}${
                 job.collection ? `:${job.collection}` : ""
-              }`,
+              }; deleting PID file to prevent infinite retry`,
               writeErr instanceof Error
                 ? writeErr
                 : new Error(String(writeErr)),
             );
+            deletePid = true;
           }
         }
       }

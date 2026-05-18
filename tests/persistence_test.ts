@@ -215,7 +215,7 @@ Deno.test("writeJobPidFile per-collection uses <action>:<collection>.pid", async
   });
 });
 
-Deno.test("atomicCreateJobPidFile: creates file atomically, returns true; second call returns false", async () => {
+Deno.test("atomicCreateJobPidFile: creates file atomically with valid JSON payload, returns true; second call returns false", async () => {
   await withCacheDir(async (dir) => {
     // First call: file doesn't exist, O_EXCL create succeeds.
     const acquired = await atomicCreateJobPidFile(
@@ -223,9 +223,13 @@ Deno.test("atomicCreateJobPidFile: creates file atomically, returns true; second
     );
     assertEquals(acquired, true);
 
-    // File now exists.
-    const stat = await Deno.stat(join(dir, "jobs", "update-all.pid"));
-    assertEquals(stat.isFile, true);
+    // File now exists and contains valid JSON (never empty/malformed).
+    const content = await Deno.readTextFile(
+      join(dir, "jobs", "update-all.pid"),
+    );
+    const parsed = JSON.parse(content);
+    assertEquals(parsed.pid, -1); // Placeholder sentinel.
+    assertEquals(parsed.action, "update-all");
 
     // Second call: file already exists, returns false.
     const acquiredAgain = await atomicCreateJobPidFile(

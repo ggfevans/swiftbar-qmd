@@ -42,7 +42,12 @@ function snapshotPath(): string {
 }
 
 function snapshotTmpPath(): string {
-  return join(cacheDir(), "last-poll.json.tmp");
+  // Include PID to avoid overlapping writes from concurrent poll processes.
+  // SwiftBar invokes the plugin on a 30-second cadence, but if a poll
+  // takes longer than the interval, two processes could write simultaneously
+  // and clobber each other's temp file. The PID suffix makes each writer
+  // unique so they don't collide.
+  return join(cacheDir(), `last-poll.json.tmp.${Deno.pid}`);
 }
 
 function jobsDir(): string {
@@ -520,10 +525,15 @@ export async function writeJobPidFile(
 }
 
 /**
- * Atomically create an empty lock file for a job using O_EXCL semantics
+ * Atomically create a lock file for a job using O_EXCL semantics
  * (`Deno.open` with `createNew: true`). Returns `true` if the file was
  * created (lock acquired), `false` if it already exists (lock held).
  * Used by the action runner to prevent TOCTOU races (SPEC §13.3, D8).
+ *
+ * The file is written with a minimal valid JSON payload (pid: -1
+ * sentinel) so that it is always parseable by `readJobPidFile`. This
+ * prevents a crash between lock creation and placeholder write from
+ * leaving an empty/malformed file that would block future runs.
  */
 export async function atomicCreateJobPidFile(
   action: ActionId,
@@ -533,6 +543,19 @@ export async function atomicCreateJobPidFile(
   const path = join(jobsDir(), jobFileName(action, collection));
   try {
     const file = await Deno.open(path, { createNew: true, write: true });
+    // Write a minimal valid JSON payload so the file is never empty.
+    // pid: -1 signals "spawn in progress" to concurrent readers. The
+    // real placeholder (with startedAt, command, logPath) overwrites this
+    // immediately after lock acquisition in runAction.
+    const payload = JSON.stringify({
+      action,
+      collection: collection ?? null,
+      pid: -1,
+      startedAt: new Date().toISOString(),
+      command: [],
+      logPath: "",
+    });
+    await file.write(new TextEncoder().encode(payload));
     file.close();
     return true;
   } catch (err) {

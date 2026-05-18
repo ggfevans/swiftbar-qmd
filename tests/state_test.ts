@@ -353,11 +353,12 @@ Deno.test("readCurrentState: freshly-recorded failure is merged into returned re
   assertEquals(result.recentFailures[1].action, "embed-all");
 });
 
-Deno.test("readCurrentState: freshly-recorded failure NOT merged when appendFailure throws — PID file kept for retry (D9)", async () => {
+Deno.test("readCurrentState: failure merged in-memory even when appendFailure throws — PID file kept for retry (D9)", async () => {
   // D9: when `appendFailure` throws, the PID file is NOT deleted. Instead,
   // `recordFailures` is incremented and the PID file is rewritten so the
-  // next poll can retry. No record is added to the returned state because
-  // persistence didn't actually succeed.
+  // next poll can retry. The in-memory failure record IS pushed to
+  // recentFailures so diffStates sees a failure event rather than treating
+  // the transition as a clean job-complete.
   const job: JobInfo = {
     action: "update-all" as ActionId,
     pid: 99999,
@@ -385,8 +386,10 @@ Deno.test("readCurrentState: freshly-recorded failure NOT merged when appendFail
     }),
   );
 
-  // No record was successfully persisted.
-  assertEquals(result.recentFailures.length, 0);
+  // The in-memory failure record is pushed even though persistence failed,
+  // so diffStates sees a failure event instead of a clean job-complete.
+  assertEquals(result.recentFailures.length, 1);
+  assertEquals(result.recentFailures[0].action, "update-all");
 
   // The PID file was NOT deleted — it was rewritten with
   // recordFailures=1 so the next poll can retry.
@@ -432,7 +435,8 @@ Deno.test("readCurrentState: appendFailure succeeds → PID file deleted, record
 
 Deno.test("readCurrentState: appendFailure throws 3+ times → PID file deleted as zombie (D9)", async () => {
   // After MAX_FAILURE_RETRIES (3) consecutive failures, the PID file
-  // is deleted as a zombie cleanup measure.
+  // is deleted as a zombie cleanup measure. The in-memory failure record
+  // is still pushed so diffStates sees the failure.
   const job: JobInfo = {
     action: "update-all" as ActionId,
     pid: 99999,
@@ -460,8 +464,9 @@ Deno.test("readCurrentState: appendFailure throws 3+ times → PID file deleted 
     }),
   );
 
-  // No record was persisted.
-  assertEquals(result.recentFailures.length, 0);
+  // In-memory failure record is pushed even though persistence failed.
+  assertEquals(result.recentFailures.length, 1);
+  assertEquals(result.recentFailures[0].action, "update-all");
 
   // PID file was deleted (zombie cleanup after 3+ failures).
   assertEquals(deleteCalls.length, 1);

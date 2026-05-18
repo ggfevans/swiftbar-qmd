@@ -1066,12 +1066,12 @@ if (!locked) {
 ```
 
 `tryAcquireLock` uses the following logic:
-1. Try `Deno.open(path, { createNew: true })` — if it succeeds, the lock is ours.
-2. If `AlreadyExists`, read the existing file and check PID liveness. A PID of `-1` means another runner is mid-spawn; treat as locked.
+1. Try `Deno.open(path, { createNew: true })` — if it succeeds, write a minimal valid JSON payload (`pid: -1` sentinel) and the lock is ours. The file is never empty, so `readJobPidFile` can always parse it.
+2. If `AlreadyExists`, read the existing file and check PID liveness. A PID of `-1` means another runner is mid-spawn; treat as locked. If the file is malformed (crash between create and write in older versions), delete it and retry the atomic create once.
 3. If the process is alive, the lock is held — return false.
 4. If the process is dead (stale lock), delete the file and retry the atomic create. If the retry also fails, someone else grabbed it — return false.
 
-After acquiring the lock, a placeholder PID file (`pid: -1`) is written before spawning. After the spawn succeeds, the real PID overwrites the placeholder. On spawn failure, the lock file is deleted to allow retry.
+After acquiring the lock, the placeholder PID file written by `atomicCreateJobPidFile` already has `pid: -1`. A second `writeJobPidFile` call overwrites it with the full payload (startedAt, command, logPath). If the placeholder write fails, the lock is released (PID file deleted) and the spawn is aborted — no background process runs without tracking. After the spawn succeeds, the real PID overwrites the placeholder. On spawn failure, the lock file is deleted to allow retry.
 
 This is per-action locking. Two different actions (`update-all` and `embed-all`) can run concurrently; the same action cannot.
 
@@ -1108,7 +1108,7 @@ if (isAlive) {
 
 If the plugin crashed or the user rebooted while an action was running, PID files can be orphaned. Detection: a PID file exists, but the PID is not alive. Treatment: same as the completion path — read log for EXIT_CODE, record as failure if not found, delete PID file.
 
-If `appendFailure` throws (disk-full, EIO, permission flip), the PID file is **not** deleted. Instead, a `recordFailures` counter in the PID file body is incremented and the file is rewritten. The next poll cycle will retry recording the failure. After `MAX_FAILURE_RETRIES` (3) consecutive failures, the PID file is deleted as zombie cleanup to prevent indefinite retention.
+If `appendFailure` throws (disk-full, EIO, permission flip), the PID file is **not** deleted. Instead, a `recordFailures` counter in the PID file body is incremented and the file is rewritten. The next poll cycle will retry recording the failure. After `MAX_FAILURE_RETRIES` (3) consecutive failures, the PID file is deleted as zombie cleanup to prevent indefinite retention. If the PID file rewrite also fails, the stale file would cause `recordFailures` to reset to undefined on the next read, creating an infinite retry loop; to prevent this, when the rewrite fails, the PID file is deleted (zombie cleanup) instead of being left for retry. The in-memory failure record is pushed to `newlyRecordedFailures` even when `appendFailure` throws, so `diffStates` sees a failure event rather than treating the transition as a clean job-complete.
 
 If the PID file contains `pid: -1` (a placeholder from the atomic lock, D8), the completion-detection loop treats it as alive and defers to the next poll.
 
