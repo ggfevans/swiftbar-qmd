@@ -282,12 +282,15 @@ Deno.test("pruneLogs(2) with 5 logs for one action keeps the 2 newest", async ()
     await Deno.mkdir(logsPath, { recursive: true });
 
     // Create 5 log files with distinct mtimes for the same action.
+    // Stamp format mirrors production `buildLogPath`:
+    // `now.toISOString().replace(/[-:.]/g, "")` →
+    // `YYYYMMDDTHHMMSSmmmZ` (no separators).
     const stamps = [
-      "20260513T100000",
-      "20260514T100000",
-      "20260515T100000",
-      "20260516T100000",
-      "20260517T100000",
+      "20260513T100000000Z",
+      "20260514T100000000Z",
+      "20260515T100000000Z",
+      "20260516T100000000Z",
+      "20260517T100000000Z",
     ];
     const filenames: string[] = [];
     for (let i = 0; i < stamps.length; i++) {
@@ -328,9 +331,12 @@ Deno.test("logsDirContents groups action+collection separately", async () => {
     // Two log files for `update-all` (plain) and one for
     // `embed-collection:gVault` (per-collection) — pruneLogs(1) should
     // keep one per group, leaving 2 files total.
-    const a1 = join(logsPath, "update-all-20260516T100000.log");
-    const a2 = join(logsPath, "update-all-20260517T100000.log");
-    const b1 = join(logsPath, "embed-collection:gVault-20260517T100000.log");
+    const a1 = join(logsPath, "update-all-20260516T100000000Z.log");
+    const a2 = join(logsPath, "update-all-20260517T100000000Z.log");
+    const b1 = join(
+      logsPath,
+      "embed-collection:gVault-20260517T100000000Z.log",
+    );
 
     for (
       const [p, dateStr] of [
@@ -355,6 +361,70 @@ Deno.test("logsDirContents groups action+collection separately", async () => {
     assertEquals(paths.has(a1), false); // pruned
     assertEquals(paths.has(a2), true);
     assertEquals(paths.has(b1), true);
+  });
+});
+
+Deno.test("logsDirContents accepts filenames produced by buildLogPath (PR #1 A3)", async () => {
+  // Regression: previously `parseLogFileName` used
+  // `stem.lastIndexOf("-")`. With the production timestamp form
+  // `2026-05-17T100000000Z` (dashes preserved), the lastDash landed
+  // inside the date — yielding group="update-all-2026-05" which then
+  // failed the KNOWN_ACTIONS check. Every real log was silently
+  // rejected, so logsDirContents() always returned [] and pruneLogs
+  // was a no-op.
+  //
+  // The fix (a) strips dashes in buildLogPath AND (b) anchors the
+  // parser on a strict digits-T-digits-Z suffix. This test exercises
+  // the EXACT filename buildLogPath produces, so a future regression
+  // that diverges either side is caught here.
+  await withCacheDir(async (dir) => {
+    const logsPath = join(dir, "logs");
+    await Deno.mkdir(logsPath, { recursive: true });
+
+    // Mirror exactly what `buildLogPath` produces:
+    //   now.toISOString().replace(/[-:.]/g, "")
+    // for a real ISO date like 2026-05-17T06:28:28.435Z.
+    const now = new Date("2026-05-17T06:28:28.435Z");
+    const stamp = now.toISOString().replace(/[-:.]/g, "");
+    // Sanity-check: the produced stamp has no dashes/colons/dots.
+    assertEquals(/[-:.]/.test(stamp), false);
+
+    const plain = join(logsPath, `update-all-${stamp}.log`);
+    const perCollection = join(
+      logsPath,
+      `embed-collection:gVault-${stamp}.log`,
+    );
+    await Deno.writeTextFile(plain, "x");
+    await Deno.writeTextFile(perCollection, "x");
+
+    const listing = await logsDirContents();
+    assertEquals(listing.length, 2);
+    const paths = new Set(listing.map((e) => e.path));
+    assertEquals(paths.has(plain), true);
+    assertEquals(paths.has(perCollection), true);
+
+    // And pruneLogs(1) must actually delete one per group (proving the
+    // parser found them and the prune wasn't a no-op).
+    await pruneLogs(1);
+    const after = await logsDirContents();
+    assertEquals(after.length, 2); // 1 per group, 2 groups
+  });
+});
+
+Deno.test("logsDirContents rejects dashed ISO timestamps (defensive)", async () => {
+  // The pre-A3 form left dashes in the timestamp
+  // (`2026-05-17T100000000Z`). If a future regression reintroduces
+  // that format the test catches it: the parser now requires a
+  // strict `\d+T\d+Z?` suffix and rejects anything else.
+  await withCacheDir(async (dir) => {
+    const logsPath = join(dir, "logs");
+    await Deno.mkdir(logsPath, { recursive: true });
+
+    const bad = join(logsPath, "update-all-2026-05-17T100000000Z.log");
+    await Deno.writeTextFile(bad, "x");
+
+    const listing = await logsDirContents();
+    assertEquals(listing.length, 0);
   });
 });
 

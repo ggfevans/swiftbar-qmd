@@ -304,13 +304,21 @@ function buildCommand(
   }
 }
 
-/** Generate the log filename for this run. SPEC §15.3 timestamp form. */
+/**
+ * Generate the log filename for this run. SPEC §15.3 timestamp form.
+ *
+ * The timestamp strips dashes as well as `:` and `.` — without that,
+ * the resulting filename (e.g. `update-all-2026-05-17T100000000Z.log`)
+ * has internal dashes inside the timestamp segment, and
+ * `parseLogFileName`'s `lastIndexOf("-")` lands inside the date instead
+ * of on the action/timestamp delimiter. See PR #1 A3.
+ */
 function buildLogPath(
   id: ActionId,
   collection: string | undefined,
   now: Date,
 ): string {
-  const stamp = now.toISOString().replace(/[:.]/g, "");
+  const stamp = now.toISOString().replace(/[-:.]/g, "");
   const key = collection ? `${id}:${collection}` : id;
   return join(cacheDir(), "logs", `${key}-${stamp}.log`);
 }

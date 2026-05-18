@@ -77,24 +77,39 @@ function jobFileName(action: ActionId, collection?: string | null): string {
 
 /**
  * Parse a log filename of the form
- *   <action>-<ISO timestamp>.log
- *   <action>:<collection>-<ISO timestamp>.log
+ *   <action>-<timestamp>.log
+ *   <action>:<collection>-<timestamp>.log
+ *
+ * Where `<timestamp>` is the dash-free ISO form produced by
+ * `buildLogPath()`, e.g. `20260517T120000000Z`.
+ *
  * Returns the action+collection group key (everything before the
  * final timestamp segment) or null if the name doesn't match.
+ *
+ * The previous implementation used `stem.lastIndexOf("-")`, which
+ * silently landed inside the action id (`update-all`, `embed-
+ * collection`) when the timestamp itself had no dashes, and worse,
+ * landed inside a dashed ISO timestamp like `2026-05-17T...`. Now
+ * we anchor on a strict "digits-T-digits-Z" suffix so the boundary
+ * is unambiguous regardless of how many dashes the action id has.
+ *
+ * See PR #1 finding A3.
  */
+const LOG_TIMESTAMP_SUFFIX = /-(\d+T\d+Z?)$/;
+
 function parseLogFileName(
   name: string,
 ): { group: string; action: ActionId } | null {
   if (!name.endsWith(".log")) return null;
   const stem = name.slice(0, -".log".length);
 
-  // The timestamp is the last "-" separated segment. We split off the
-  // trailing piece; everything before the final hyphen is the group
-  // (action[:collection]).
-  const lastDash = stem.lastIndexOf("-");
-  if (lastDash <= 0) return null;
+  // Strip the trailing `-<digits>T<digits>Z?` timestamp segment, then
+  // everything before it is the action[:collection] group.
+  const m = stem.match(LOG_TIMESTAMP_SUFFIX);
+  if (!m) return null;
+  const group = stem.slice(0, m.index);
+  if (group.length === 0) return null;
 
-  const group = stem.slice(0, lastDash);
   const action = group.includes(":")
     ? group.slice(0, group.indexOf(":"))
     : group;
