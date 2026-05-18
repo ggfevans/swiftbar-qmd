@@ -1,7 +1,7 @@
 #!/usr/bin/env -S deno run --allow-net=localhost:8181 --allow-read=$HOME/.cache/qmd,$HOME/.config/swiftbar-qmd,$HOME/.cache/swiftbar-qmd --allow-write=$HOME/.cache/swiftbar-qmd,$HOME/.config/swiftbar-qmd --allow-run=qmd,open,osascript,kill,bash --allow-env=HOME,PATH,EDITOR
 
 // <swiftbar.title>swiftbar-qmd</swiftbar.title>
-// <swiftbar.version>v0.1.0</swiftbar.version>
+// <swiftbar.version>v1.0.0</swiftbar.version>
 // <swiftbar.author>Gareth Evans</swiftbar.author>
 // <swiftbar.author.github>ggfevans</swiftbar.author.github>
 // <swiftbar.desc>Surface qmd operational state (collections, daemon, jobs) in the macOS menubar.</swiftbar.desc>
@@ -49,7 +49,7 @@ async function main(): Promise<void> {
     Deno.exit(0);
   }
 
-  const { config } = await loadConfig();
+  const { config, errors: configErrors } = await loadConfig();
 
   // Recheck sentinel (SPEC §13 / "Re-check now"): if the user just
   // clicked the first-run "Re-check now" entry, the action runner
@@ -111,11 +111,15 @@ async function main(): Promise<void> {
   // Render the §10 healthy menu (step 9). Error-state degradation
   // (SPEC §10.4): when consecutiveReadFailures > 0, the renderer
   // prepends "⚠ Status read failed — using last poll (Nm ago)" and
-  // appends "Show last error".
-  const errorContext = consecutiveReadFailures > 0
+  // appends "Show last error". Config validation errors (SPEC §7.5)
+  // surface as "⚠ Config error — see logs" via errorContext.configErrors.
+  const hasReadFailure = consecutiveReadFailures > 0;
+  const hasConfigError = configErrors.length > 0;
+  const errorContext = (hasReadFailure || hasConfigError)
     ? {
       lastGoodAt: prevSnapshot ? new Date(prevSnapshot.pollTimestamp) : null,
       consecutiveFailures: consecutiveReadFailures,
+      configErrors,
     }
     : undefined;
   console.log(renderMenu(state, tier, config, errorContext));

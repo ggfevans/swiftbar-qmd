@@ -33,3 +33,6 @@ jobs:
 
       - name: Verify shebang exec bit
         run: test -x qmd.30s.ts
+
+      - name: install.sh syntax check
+        run: bash -n install.sh
