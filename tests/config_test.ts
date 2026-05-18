@@ -3,6 +3,7 @@ import { stringify as stringifyYaml } from "@std/yaml";
 import { join } from "@std/path";
 import {
   DEFAULT_CONFIG,
+  EXAMPLE_CONFIG_PATH,
   loadConfigFrom,
   validateConfig,
 } from "../lib/config.ts";
@@ -201,4 +202,28 @@ Deno.test("loadConfigFrom: malformed YAML returns DEFAULT_CONFIG with errors", a
     assertEquals(config, DEFAULT_CONFIG);
     assertEquals(errors.length > 0, true);
   });
+});
+
+// ─── EXAMPLE_CONFIG_PATH decoding (PR #1: A5) ─────────────────
+
+Deno.test("EXAMPLE_CONFIG_PATH: returns a decoded POSIX path (no percent escapes)", () => {
+  // Regression: with `.pathname`, the SwiftBar default install location
+  // (`~/Library/Application Support/SwiftBar/Plugins`) produces a path
+  // with `%20` literals. Deno.copyFile then fails with NotFound and the
+  // seed-from-example path silently degrades to writing serialized
+  // defaults. `fromFileUrl` keeps the path round-trippable to disk ops.
+  assertEquals(
+    EXAMPLE_CONFIG_PATH.includes("%20"),
+    false,
+    "decoded path must not contain %20",
+  );
+  assertEquals(
+    EXAMPLE_CONFIG_PATH.includes("%2F"),
+    false,
+    "decoded path must not contain %2F",
+  );
+  // And the file referenced by the path must actually exist — proves
+  // the decoded path is what `Deno.copyFile` would consume.
+  const stat = Deno.statSync(EXAMPLE_CONFIG_PATH);
+  assertEquals(stat.isFile, true);
 });

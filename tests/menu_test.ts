@@ -1,5 +1,6 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
-import { renderMenu } from "../lib/menu.ts";
+import { fromFileUrl } from "@std/path";
+import { getPluginPath, renderMenu } from "../lib/menu.ts";
 import type {
   CollectionState,
   Config,
@@ -251,4 +252,37 @@ Deno.test("renderMenu: status.error set (no errorContext) → degradation header
   const out = renderMenu(state, GREEN_TIER, makeConfig());
 
   assertStringIncludes(out, "Status read failed");
+});
+
+// ─── getPluginPath (SPEC §11.1) ───────────────────────────────
+
+Deno.test("getPluginPath: returns a decoded POSIX path (no percent escapes)", () => {
+  // Regression for the `.pathname` bug: when SwiftBar's default install
+  // location (`~/Library/Application Support/SwiftBar/Plugins`) is
+  // expressed as a `file://` URL, the space becomes `%20`. SwiftBar
+  // executes the `bash=` directive verbatim so the path MUST be
+  // pre-decoded before we hand it back.
+  const out = getPluginPath();
+
+  // The path SwiftBar receives must not contain percent-escapes.
+  assertEquals(out.includes("%20"), false, "decoded path must not contain %20");
+  assertEquals(out.includes("%2F"), false, "decoded path must not contain %2F");
+});
+
+Deno.test("getPluginPath: matches fromFileUrl(Deno.mainModule) — handles space-containing paths", () => {
+  // Belt-and-braces: verify the helper agrees with the canonical
+  // decoder. Equivalently, this asserts a `file://`-URL with a space
+  // in it round-trips through the helper as a real space.
+  const expected = fromFileUrl(Deno.mainModule);
+  assertEquals(getPluginPath(), expected);
+
+  // Spot-check the decoder itself with a URL containing %20 — this is
+  // the exact scenario A4 is fixing.
+  const decoded = fromFileUrl(
+    "file:///Users/x/Library/Application%20Support/SwiftBar/Plugins/qmd.30s.ts",
+  );
+  assertEquals(
+    decoded,
+    "/Users/x/Library/Application Support/SwiftBar/Plugins/qmd.30s.ts",
+  );
 });

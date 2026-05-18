@@ -1,6 +1,6 @@
 import { parse as parseYaml, stringify as stringifyYaml } from "@std/yaml";
 import { ensureDir } from "@std/fs";
-import { dirname } from "@std/path";
+import { dirname, fromFileUrl } from "@std/path";
 import type { Config } from "./types.ts";
 
 // ─── Paths ─────────────────────────────────────────────────────
@@ -11,11 +11,17 @@ export const CONFIG_PATH: string = (() => {
   return `${home}/.config/swiftbar-qmd/config.yml`;
 })();
 
-/** Example config shipped with the plugin (next to the script). */
-export const EXAMPLE_CONFIG_PATH: string = new URL(
-  "../config.example.yml",
-  import.meta.url,
-).pathname;
+/**
+ * Example config shipped with the plugin (next to the script).
+ *
+ * `fromFileUrl` decodes percent escapes so the seed copy works when
+ * the plugin lives under a path containing spaces (e.g. the default
+ * SwiftBar install location `~/Library/Application Support/SwiftBar/
+ * Plugins`).
+ */
+export const EXAMPLE_CONFIG_PATH: string = fromFileUrl(
+  new URL("../config.example.yml", import.meta.url),
+);
 
 // ─── Defaults ──────────────────────────────────────────────────
 

@@ -11,6 +11,7 @@ import type {
 import { compactDuration, relativeTime } from "./time.ts";
 import { actionLabel, computeTier } from "./rollup.ts";
 import { cacheDir } from "./persistence.ts";
+import { fromFileUrl } from "@std/path";
 
 // ─── Icon glyphs (SPEC §9.3) ──────────────────────────────────
 //
@@ -45,11 +46,14 @@ const HOLLOW_GLYPH_B64 =
  * directives like `bash="<plugin-path>" param1="--action" param2="…"`
  * so SwiftBar can re-invoke the plugin with action arguments.
  *
- * Deno.mainModule is a `file://` URL; converting via the URL API gives
- * us a properly decoded POSIX path.
+ * Deno.mainModule is a `file://` URL; `fromFileUrl` decodes percent
+ * escapes (e.g. `%20` → space) so paths containing spaces — like the
+ * default SwiftBar install location `~/Library/Application Support/
+ * SwiftBar/Plugins` — survive the round-trip into a SwiftBar `bash=`
+ * directive without corruption.
  */
 export function getPluginPath(): string {
-  return new URL(Deno.mainModule).pathname;
+  return fromFileUrl(Deno.mainModule);
 }
 
 // ─── First-run menu rendering (SPEC §12) ──────────────────────
