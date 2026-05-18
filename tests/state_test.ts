@@ -116,6 +116,7 @@ function makeSources(
     isProcessAlive: (_pid: number) => true,
     readExitCodeFromLog: (_path: string) => Promise.resolve(0),
     appendFailure: (_f) => Promise.resolve(),
+    writeJobPidFile: (_action, _info) => Promise.resolve(),
     deleteJobPidFile: (_action, _collection) => Promise.resolve(),
     ...overrides,
   };
@@ -352,14 +353,11 @@ Deno.test("readCurrentState: freshly-recorded failure is merged into returned re
   assertEquals(result.recentFailures[1].action, "embed-all");
 });
 
-Deno.test("readCurrentState: freshly-recorded failure NOT merged when appendFailure throws (PR #1 A2)", async () => {
-  // Half of the safety net: if persistence fails, we mustn't promise
-  // the caller a record we couldn't actually durably write. The next
-  // poll will re-discover the dead PID (since deleteJobPidFile is still
-  // called) — wait, no, deleteJobPidFile IS still called, so the next
-  // poll won't see it. The trade-off here is deliberate: keep the
-  // returned state honest about what's on disk; rely on logError to
-  // surface the persistence problem.
+Deno.test("readCurrentState: freshly-recorded failure NOT merged when appendFailure throws — PID file kept for retry (D9)", async () => {
+  // D9: when `appendFailure` throws, the PID file is NOT deleted. Instead,
+  // `recordFailures` is incremented and the PID file is rewritten so the
+  // next poll can retry. No record is added to the returned state because
+  // persistence didn't actually succeed.
   const job: JobInfo = {
     action: "update-all" as ActionId,
     pid: 99999,
@@ -367,6 +365,8 @@ Deno.test("readCurrentState: freshly-recorded failure NOT merged when appendFail
     command: ["qmd", "update"],
     logPath: "/tmp/log.log",
   };
+
+  const writeCalls: Array<{ action: ActionId; info: JobInfo }> = [];
 
   const result = await readCurrentState(
     makeConfig(),
@@ -377,14 +377,117 @@ Deno.test("readCurrentState: freshly-recorded failure NOT merged when appendFail
       readRecentFailures: () => Promise.resolve([]),
       appendFailure: (_f: FailureRecord) =>
         Promise.reject(new Error("disk-full")),
+      writeJobPidFile: (action: ActionId, info: JobInfo) => {
+        writeCalls.push({ action, info });
+        return Promise.resolve();
+      },
       deleteJobPidFile: () => Promise.resolve(),
     }),
   );
 
-  // No record was successfully persisted, so none should appear in the
-  // returned state. (Otherwise tier/notify would assume a durable
-  // record that doesn't exist.)
+  // No record was successfully persisted.
   assertEquals(result.recentFailures.length, 0);
+
+  // The PID file was NOT deleted — it was rewritten with
+  // recordFailures=1 so the next poll can retry.
+  assertEquals(writeCalls.length, 1);
+  assertEquals(writeCalls[0].action, "update-all");
+  assertEquals(writeCalls[0].info.recordFailures, 1);
+});
+
+Deno.test("readCurrentState: appendFailure succeeds → PID file deleted, recordFailures not set (D9)", async () => {
+  const job: JobInfo = {
+    action: "update-all" as ActionId,
+    pid: 99999,
+    startedAt: new Date("2026-05-17T11:50:00.000Z"),
+    command: ["qmd", "update"],
+    logPath: "/tmp/log.log",
+  };
+
+  const deleteCalls: Array<{ action: ActionId; collection?: string }> = [];
+
+  const result = await readCurrentState(
+    makeConfig(),
+    makeSources({
+      readJobPidFiles: () => Promise.resolve([job]),
+      isProcessAlive: (_pid: number) => false,
+      readExitCodeFromLog: (_path: string) => Promise.resolve(1),
+      readRecentFailures: () => Promise.resolve([]),
+      appendFailure: (_f: FailureRecord) => Promise.resolve(),
+      deleteJobPidFile: (action: ActionId, collection?: string) => {
+        deleteCalls.push({ action, collection });
+        return Promise.resolve();
+      },
+    }),
+  );
+
+  // Record was persisted and merged into the returned state.
+  assertEquals(result.recentFailures.length, 1);
+  assertEquals(result.recentFailures[0].action, "update-all");
+
+  // PID file was deleted normally.
+  assertEquals(deleteCalls.length, 1);
+  assertEquals(deleteCalls[0].action, "update-all");
+});
+
+Deno.test("readCurrentState: appendFailure throws 3+ times → PID file deleted as zombie (D9)", async () => {
+  // After MAX_FAILURE_RETRIES (3) consecutive failures, the PID file
+  // is deleted as a zombie cleanup measure.
+  const job: JobInfo = {
+    action: "update-all" as ActionId,
+    pid: 99999,
+    startedAt: new Date("2026-05-17T11:50:00.000Z"),
+    command: ["qmd", "update"],
+    logPath: "/tmp/log.log",
+    recordFailures: 2, // Already failed twice — one more and we clean up.
+  };
+
+  const deleteCalls: Array<{ action: ActionId; collection?: string }> = [];
+
+  const result = await readCurrentState(
+    makeConfig(),
+    makeSources({
+      readJobPidFiles: () => Promise.resolve([job]),
+      isProcessAlive: (_pid: number) => false,
+      readExitCodeFromLog: (_path: string) => Promise.resolve(1),
+      readRecentFailures: () => Promise.resolve([]),
+      appendFailure: (_f: FailureRecord) =>
+        Promise.reject(new Error("disk-full")),
+      deleteJobPidFile: (action: ActionId, collection?: string) => {
+        deleteCalls.push({ action, collection });
+        return Promise.resolve();
+      },
+    }),
+  );
+
+  // No record was persisted.
+  assertEquals(result.recentFailures.length, 0);
+
+  // PID file was deleted (zombie cleanup after 3+ failures).
+  assertEquals(deleteCalls.length, 1);
+  assertEquals(deleteCalls[0].action, "update-all");
+});
+
+Deno.test("readCurrentState: PID -1 placeholder treated as alive (D8)", async () => {
+  // A PID of -1 means the action runner is mid-spawn. The completion
+  // loop should keep it in inFlightJobs and skip cleanup.
+  const job: JobInfo = {
+    action: "update-all" as ActionId,
+    pid: -1,
+    startedAt: new Date("2026-05-17T11:50:00.000Z"),
+    command: ["qmd", "update"],
+    logPath: "/tmp/log.log",
+  };
+
+  const result = await readCurrentState(
+    makeConfig(),
+    makeSources({
+      readJobPidFiles: () => Promise.resolve([job]),
+    }),
+  );
+
+  assertEquals(result.inFlightJobs.length, 1);
+  assertEquals(result.inFlightJobs[0].pid, -1);
 });
 
 Deno.test("readCurrentState: dead PID with exit 0 → delete + removed but NO appendFailure", async () => {

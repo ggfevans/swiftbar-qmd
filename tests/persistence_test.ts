@@ -10,6 +10,7 @@ import type {
 } from "../lib/types.ts";
 import {
   appendFailure,
+  atomicCreateJobPidFile,
   deleteJobPidFile,
   logsDirContents,
   pruneFailuresOlderThan,
@@ -211,6 +212,61 @@ Deno.test("writeJobPidFile per-collection uses <action>:<collection>.pid", async
     // deleteJobPidFile with collection arg targets the right file
     await deleteJobPidFile("embed-collection" as ActionId, "gVault");
     assertEquals((await readJobPidFiles()).length, 0);
+  });
+});
+
+Deno.test("atomicCreateJobPidFile: creates file atomically, returns true; second call returns false", async () => {
+  await withCacheDir(async (dir) => {
+    // First call: file doesn't exist, O_EXCL create succeeds.
+    const acquired = await atomicCreateJobPidFile(
+      "update-all" as ActionId,
+    );
+    assertEquals(acquired, true);
+
+    // File now exists.
+    const stat = await Deno.stat(join(dir, "jobs", "update-all.pid"));
+    assertEquals(stat.isFile, true);
+
+    // Second call: file already exists, returns false.
+    const acquiredAgain = await atomicCreateJobPidFile(
+      "update-all" as ActionId,
+    );
+    assertEquals(acquiredAgain, false);
+  });
+});
+
+Deno.test("writeJobPidFile: recordFailures serialised and read back", async () => {
+  await withCacheDir(async () => {
+    const job: JobInfo = {
+      action: "update-all" as ActionId,
+      pid: 12345,
+      startedAt: new Date("2026-05-17T12:00:00.000Z"),
+      command: ["qmd", "update"],
+      logPath: "/tmp/update-all.log",
+      recordFailures: 2,
+    };
+    await writeJobPidFile("update-all" as ActionId, job);
+
+    const files = await readJobPidFiles();
+    assertEquals(files.length, 1);
+    assertEquals(files[0].recordFailures, 2);
+  });
+});
+
+Deno.test("writeJobPidFile: recordFailures undefined → not in JSON", async () => {
+  await withCacheDir(async () => {
+    const job: JobInfo = {
+      action: "update-all" as ActionId,
+      pid: 12345,
+      startedAt: new Date("2026-05-17T12:00:00.000Z"),
+      command: ["qmd", "update"],
+      logPath: "/tmp/update-all.log",
+    };
+    await writeJobPidFile("update-all" as ActionId, job);
+
+    const files = await readJobPidFiles();
+    assertEquals(files.length, 1);
+    assertEquals(files[0].recordFailures, undefined);
   });
 });
 

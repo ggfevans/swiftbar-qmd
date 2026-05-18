@@ -2,7 +2,9 @@ import { ensureDir } from "@std/fs";
 import { join } from "@std/path";
 import type { ActionId, JobInfo } from "./types.ts";
 import {
+  atomicCreateJobPidFile as productionAtomicCreateJobPidFile,
   cacheDir,
+  deleteJobPidFile as productionDeleteJobPidFile,
   readJobPidFile as productionReadJobPidFile,
   writeJobPidFile as productionWriteJobPidFile,
 } from "./persistence.ts";
@@ -40,6 +42,18 @@ export type ActionDeps = {
     collection?: string,
   ) => Promise<JobInfo | null>;
   writeJobPidFile: (action: ActionId, info: JobInfo) => Promise<void>;
+  /**
+   * Atomically acquire the job lock using O_EXCL semantics. Returns true
+   * if the lock was acquired (file created), false if another process
+   * holds it. Handles stale locks by cleaning them up and retrying.
+   * See SPEC §13.3, D8.
+   */
+  tryAcquireLock: (action: ActionId, collection?: string) => Promise<boolean>;
+  /**
+   * Delete the PID file for a job. No-op if the file doesn't exist.
+   * Used to release the lock on spawn failure.
+   */
+  deleteJobPidFile: (action: ActionId, collection?: string) => Promise<void>;
   /** Spawn the command detached, returning the background PID. */
   spawnDetached: (commandString: string, logPath: string) => Promise<number>;
   /** True if the PID is still alive. SIGCONT probe in production. */
@@ -103,6 +117,42 @@ export function isProcessAlive(pid: number): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Atomically acquire the job lock using O_EXCL semantics (SPEC §13.3, D8).
+ *
+ * 1. Try `Deno.open(path, { createNew: true })` — if it succeeds, the
+ *    lock is ours.
+ * 2. If AlreadyExists, read the file and check PID liveness. A PID of
+ *    -1 means another runner is currently spawning; treat as locked.
+ * 3. If the process is alive, the lock is held — return false.
+ * 4. If the process is dead (stale lock), delete the file and retry
+ *    the atomic create. If the retry also fails, someone else grabbed
+ *    it between our delete and create — return false.
+ */
+async function productionTryAcquireLock(
+  action: ActionId,
+  collection?: string,
+): Promise<boolean> {
+  if (await productionAtomicCreateJobPidFile(action, collection)) {
+    return true;
+  }
+
+  // File exists — check if the process is alive.
+  const info = await productionReadJobPidFile(action, collection);
+  if (info === null) {
+    // File disappeared between create and read — retry.
+    return productionTryAcquireLock(action, collection);
+  }
+  // PID -1 means another runner is mid-spawn (placeholder).
+  if (info.pid === -1 || isProcessAlive(info.pid)) {
+    return false;
+  }
+
+  // Stale lock — remove and retry.
+  await productionDeleteJobPidFile(action, collection);
+  return productionAtomicCreateJobPidFile(action, collection);
 }
 
 /**
@@ -265,6 +315,8 @@ async function productionConfirmDialog(
 const PRODUCTION_DEPS: ActionDeps = {
   readJobPidFile: productionReadJobPidFile,
   writeJobPidFile: productionWriteJobPidFile,
+  tryAcquireLock: productionTryAcquireLock,
+  deleteJobPidFile: productionDeleteJobPidFile,
   spawnDetached: productionSpawnDetached,
   isProcessAlive,
   touchSentinel: productionTouchSentinel,
@@ -406,6 +458,9 @@ export async function runAction(
   const d: ActionDeps = {
     readJobPidFile: deps?.readJobPidFile ?? PRODUCTION_DEPS.readJobPidFile,
     writeJobPidFile: deps?.writeJobPidFile ?? PRODUCTION_DEPS.writeJobPidFile,
+    tryAcquireLock: deps?.tryAcquireLock ?? PRODUCTION_DEPS.tryAcquireLock,
+    deleteJobPidFile: deps?.deleteJobPidFile ??
+      PRODUCTION_DEPS.deleteJobPidFile,
     spawnDetached: deps?.spawnDetached ?? PRODUCTION_DEPS.spawnDetached,
     isProcessAlive: deps?.isProcessAlive ?? PRODUCTION_DEPS.isProcessAlive,
     touchSentinel: deps?.touchSentinel ?? PRODUCTION_DEPS.touchSentinel,
@@ -508,30 +563,50 @@ export async function runAction(
     return;
   }
 
-  // ── Locking (SPEC §13.3). ─────────────────────────────────
-  const existing = await d.readJobPidFile(id, collection);
-  if (existing && d.isProcessAlive(existing.pid)) {
+  // ── Locking (SPEC §13.3, D8 atomic O_EXCL). ──────────────
+  const locked = await d.tryAcquireLock(id, collection);
+  if (!locked) {
     await logInfo(
       "actions",
       `${id}${
         collection ? `:${collection}` : ""
-      }: already running (pid=${existing.pid}); skipping spawn`,
+      }: already running; skipping spawn`,
     );
     d.exit(0);
     return;
   }
-  // Stale PID handling (write/log on completion) is (deferred to
-  // step 12: action completion + in-flight UI). For now, a dead PID
-  // file simply gets overwritten by the spawn below.
 
   // ── Spawn detached and persist the PID. ───────────────────
   const startedAt = new Date();
   const logPath = buildLogPath(id, collection, startedAt, logsDir);
 
+  // Write a placeholder PID file so the lock is visible to
+  // concurrent runners. The pid=-1 sentinel tells tryAcquireLock
+  // that a spawn is in progress. Overwritten with the real PID
+  // after spawn succeeds.
+  try {
+    await d.writeJobPidFile(id, {
+      action: id,
+      collection,
+      pid: -1,
+      startedAt,
+      command: spec.argv,
+      logPath,
+    });
+  } catch (err) {
+    await logError(
+      "actions",
+      `${id}: writeJobPidFile (placeholder) failed`,
+      err instanceof Error ? err : new Error(String(err)),
+    );
+  }
+
   let pid: number;
   try {
     pid = await d.spawnDetached(spec.shell, logPath);
   } catch (err) {
+    // Spawn failed — release the lock so the next poll can retry.
+    await d.deleteJobPidFile(id, collection).catch(() => {});
     await logError(
       "actions",
       `${id}: spawn failed`,
@@ -541,6 +616,8 @@ export async function runAction(
   }
 
   if (!Number.isFinite(pid) || pid <= 0) {
+    // Invalid PID — release the lock.
+    await d.deleteJobPidFile(id, collection).catch(() => {});
     await logError(
       "actions",
       `${id}: spawn returned invalid pid (${pid})`,

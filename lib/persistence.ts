@@ -425,6 +425,9 @@ export async function readJobPidFiles(): Promise<JobInfo[]> {
       startedAt: new Date(raw.startedAt),
       command: (raw.command as unknown[]).map((s) => String(s)),
       logPath: raw.logPath,
+      recordFailures: typeof raw.recordFailures === "number"
+        ? raw.recordFailures
+        : undefined,
     });
   }
 
@@ -482,6 +485,9 @@ export async function readJobPidFile(
     startedAt: new Date(raw.startedAt),
     command: (raw.command as unknown[]).map((s) => String(s)),
     logPath: raw.logPath,
+    recordFailures: typeof raw.recordFailures === "number"
+      ? raw.recordFailures
+      : undefined,
   };
 }
 
@@ -489,13 +495,16 @@ export async function readJobPidFile(
  * Write a pid file for an in-flight job. Per SPEC §15.3, `collection`
  * is serialised as `null` (not omitted) when absent. The filename is
  * `<action>.pid` or `<action>:<collection>.pid`.
+ *
+ * `recordFailures` is serialised when present so the poll cycle can
+ * track consecutive `appendFailure` retries (SPEC §13.5, D9).
  */
 export async function writeJobPidFile(
   action: ActionId,
   info: JobInfo,
 ): Promise<void> {
   await ensureJobsDir();
-  const payload = {
+  const payload: Record<string, unknown> = {
     action,
     collection: info.collection ?? null,
     pid: info.pid,
@@ -503,8 +512,33 @@ export async function writeJobPidFile(
     command: info.command,
     logPath: info.logPath,
   };
+  if (info.recordFailures !== undefined) {
+    payload.recordFailures = info.recordFailures;
+  }
   const path = join(jobsDir(), jobFileName(action, info.collection));
   await Deno.writeTextFile(path, JSON.stringify(payload, null, 2));
+}
+
+/**
+ * Atomically create an empty lock file for a job using O_EXCL semantics
+ * (`Deno.open` with `createNew: true`). Returns `true` if the file was
+ * created (lock acquired), `false` if it already exists (lock held).
+ * Used by the action runner to prevent TOCTOU races (SPEC §13.3, D8).
+ */
+export async function atomicCreateJobPidFile(
+  action: ActionId,
+  collection?: string,
+): Promise<boolean> {
+  await ensureJobsDir();
+  const path = join(jobsDir(), jobFileName(action, collection));
+  try {
+    const file = await Deno.open(path, { createNew: true, write: true });
+    file.close();
+    return true;
+  } catch (err) {
+    if (err instanceof Deno.errors.AlreadyExists) return false;
+    throw err;
+  }
 }
 
 /**
