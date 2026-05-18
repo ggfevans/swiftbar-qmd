@@ -1,7 +1,7 @@
 # swiftbar-qmd
 
-> Ambient operational visibility for [qmd](https://github.com/tobi/qmd) in your
-> macOS menubar.
+> Real-time operational visibility for [qmd](https://github.com/tobi/qmd) in
+> your macOS menubar.
 
 A [SwiftBar](https://github.com/swiftbar/SwiftBar) plugin that puts
 [qmd](https://github.com/tobi/qmd) state in your macOS menubar: collection
@@ -15,17 +15,17 @@ swiftbar-qmd surfaces operational visibility into a running qmd installation
 through the macOS menubar. It answers two questions on an ongoing basis: *what
 is qmd doing right now*, and *what state are my collections in*. It also
 provides one-click access to common maintenance actions (`qmd update`,
-`qmd embed`, MCP daemon control) so those operations do not require a context
-switch to the terminal.
+`qmd embed`, MCP daemon control) so those operations do not require switching
+to the terminal.
 
-The plugin is ADHD-first in design: a single ambient signal (the menubar icon's
-colour) answers "do I need to click?" at a glance, the dropdown menu is
-organised by signal type for fast scanning, and notifications are reserved
-exclusively for failures so the tool does not accumulate notification debt.
+The plugin is ADHD-first in design: a single at-a-glance visual signal (the
+menubar icon's colour) answers "do I need to click?" without opening the menu,
+the dropdown is organised by signal type for fast scanning, and notifications
+are reserved for failures so the tool does not accumulate notification debt.
 
 It is explicitly **not** a search interface — searching is qmd's CLI / MCP /
 SDK job, and a separate TUI ([lazyqmd](https://github.com/AlexZeitler/lazyqmd))
-already covers that surface. swiftbar-qmd is purely an operational dashboard.
+already covers that surface. swiftbar-qmd is an operational dashboard.
 
 ## Why this exists
 
