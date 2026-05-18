@@ -483,6 +483,13 @@ export async function readCurrentState(
   // appendFailure throwing must not stop us from cleaning up the
   // next job's PID file. The loop itself swallows everything to
   // honour readCurrentState's never-throw contract.
+  // Failures recorded inside this loop must also make it into the
+  // returned CurrentState — `failuresResult` above is a pre-loop
+  // snapshot, so without merging, a non-zero exit detected *this*
+  // poll is written to disk but absent from `state.recentFailures`,
+  // and `diffStates` then treats it as a clean `job-complete` instead
+  // of a failure. See PR #1 finding A2.
+  const newlyRecordedFailures: FailureRecord[] = [];
   const inFlightJobs: JobInfo[] = [];
   for (const job of rawJobs) {
     let alive = false;
@@ -515,14 +522,20 @@ export async function readCurrentState(
       exitCode = -1;
     }
     if (exitCode !== 0) {
+      const record: FailureRecord = {
+        action: job.action,
+        collection: job.collection,
+        failedAt: new Date(),
+        exitCode,
+        logPath: job.logPath,
+      };
       try {
-        await s.appendFailure({
-          action: job.action,
-          collection: job.collection,
-          failedAt: new Date(),
-          exitCode,
-          logPath: job.logPath,
-        });
+        await s.appendFailure(record);
+        // Track the in-memory record so the returned CurrentState
+        // reflects what we just wrote to disk. Only push on the happy
+        // path — if persistence failed we can't promise the caller a
+        // durable record. The next poll will re-discover and retry.
+        newlyRecordedFailures.push(record);
       } catch (err) {
         await logError(
           "state",
@@ -558,6 +571,25 @@ export async function readCurrentState(
         ? failuresResult.reason
         : new Error(String(failuresResult.reason)),
     );
+  }
+
+  // Merge failures we just appended (newest-first to mirror
+  // appendFailure's on-disk ordering). Dedupe by (action, collection,
+  // failedAt.getTime()) — a slow filesystem read could theoretically
+  // observe the just-written record, in which case we shouldn't
+  // double-count it.
+  if (newlyRecordedFailures.length > 0) {
+    const seen = new Set<string>();
+    const key = (f: FailureRecord) =>
+      `${f.action}|${f.collection ?? ""}|${f.failedAt.getTime()}`;
+    const merged: FailureRecord[] = [];
+    for (const f of [...newlyRecordedFailures, ...recentFailures]) {
+      const k = key(f);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      merged.push(f);
+    }
+    recentFailures = merged;
   }
 
   // Logs come from the filesystem in directory-listing order; the

@@ -307,6 +307,86 @@ Deno.test("readCurrentState: dead PID with non-zero exit → appendFailure + del
   assertEquals(deleteCalls[0].action, "update-all");
 });
 
+Deno.test("readCurrentState: freshly-recorded failure is merged into returned recentFailures (PR #1 A2)", async () => {
+  // Regression for the pre-loop snapshot bug: the failure record we
+  // just appendFailure'd inside the completion loop MUST appear in the
+  // returned CurrentState.recentFailures (in addition to whatever
+  // `readRecentFailures()` returned pre-loop). Otherwise `diffStates`
+  // treats this poll as a clean `job-complete` and the failure
+  // notification (and red-tier rollup contribution) is silently lost.
+  const job: JobInfo = {
+    action: "update-all" as ActionId,
+    pid: 99999,
+    startedAt: new Date("2026-05-17T11:50:00.000Z"),
+    command: ["qmd", "update"],
+    logPath: "/tmp/update-all-fresh.log",
+  };
+
+  // The pre-loop read returns one older failure (a different action).
+  const existing: FailureRecord = {
+    action: "embed-all" as ActionId,
+    failedAt: new Date("2026-05-17T11:00:00.000Z"),
+    exitCode: 2,
+    logPath: "/tmp/embed-all-old.log",
+  };
+
+  const result = await readCurrentState(
+    makeConfig(),
+    makeSources({
+      readJobPidFiles: () => Promise.resolve([job]),
+      isProcessAlive: (_pid: number) => false,
+      readExitCodeFromLog: (_path: string) => Promise.resolve(1),
+      readRecentFailures: () => Promise.resolve([existing]),
+      appendFailure: (_f: FailureRecord) => Promise.resolve(),
+      deleteJobPidFile: () => Promise.resolve(),
+    }),
+  );
+
+  // Both the older failure and the just-recorded one are present.
+  assertEquals(result.recentFailures.length, 2);
+  // Newly-recorded failure is first (newest-first ordering).
+  assertEquals(result.recentFailures[0].action, "update-all");
+  assertEquals(result.recentFailures[0].exitCode, 1);
+  assertEquals(result.recentFailures[0].logPath, "/tmp/update-all-fresh.log");
+  // Older failure follows.
+  assertEquals(result.recentFailures[1].action, "embed-all");
+});
+
+Deno.test("readCurrentState: freshly-recorded failure NOT merged when appendFailure throws (PR #1 A2)", async () => {
+  // Half of the safety net: if persistence fails, we mustn't promise
+  // the caller a record we couldn't actually durably write. The next
+  // poll will re-discover the dead PID (since deleteJobPidFile is still
+  // called) — wait, no, deleteJobPidFile IS still called, so the next
+  // poll won't see it. The trade-off here is deliberate: keep the
+  // returned state honest about what's on disk; rely on logError to
+  // surface the persistence problem.
+  const job: JobInfo = {
+    action: "update-all" as ActionId,
+    pid: 99999,
+    startedAt: new Date("2026-05-17T11:50:00.000Z"),
+    command: ["qmd", "update"],
+    logPath: "/tmp/log.log",
+  };
+
+  const result = await readCurrentState(
+    makeConfig(),
+    makeSources({
+      readJobPidFiles: () => Promise.resolve([job]),
+      isProcessAlive: (_pid: number) => false,
+      readExitCodeFromLog: (_path: string) => Promise.resolve(1),
+      readRecentFailures: () => Promise.resolve([]),
+      appendFailure: (_f: FailureRecord) =>
+        Promise.reject(new Error("disk-full")),
+      deleteJobPidFile: () => Promise.resolve(),
+    }),
+  );
+
+  // No record was successfully persisted, so none should appear in the
+  // returned state. (Otherwise tier/notify would assume a durable
+  // record that doesn't exist.)
+  assertEquals(result.recentFailures.length, 0);
+});
+
 Deno.test("readCurrentState: dead PID with exit 0 → delete + removed but NO appendFailure", async () => {
   const job: JobInfo = {
     action: "embed-collection" as ActionId,
