@@ -603,7 +603,14 @@ function renderUtilityFooter(
       `📄 Show last output | bash="open" param1="-t" param2="${newest.path}" terminal=false`,
     );
   }
-  if (errorContext && errorContext.consecutiveFailures > 0) {
+  // "Show last error" footer fires for either of the two header
+  // conditions (consecutive read failures OR config errors) so the user
+  // always has a one-click path from the surfaced ⚠ header to the
+  // diagnostic log.
+  const hasReadFailure = !!errorContext && errorContext.consecutiveFailures > 0;
+  const hasConfigError = !!errorContext &&
+    (errorContext.configErrors?.length ?? 0) > 0;
+  if (hasReadFailure || hasConfigError) {
     const errorLogPath = `${cacheDir()}/error.log`;
     lines.push(
       `⚠ Show last error | bash="open" param1="-t" param2="${errorLogPath}" terminal=false`,
@@ -631,10 +638,16 @@ function renderPreferencesFooter(): string[] {
  * `lastGoodAt` is the pollTimestamp of the snapshot whose data is
  * being reused; passing `null` falls back to omitting the "(Nm ago)"
  * suffix.
+ *
+ * `configErrors`, when non-empty, drives the "⚠ Config error — see
+ * logs" header (SPEC §10.4, §16.2 — config:invalid / config:parse).
+ * The header is emitted independently of `consecutiveFailures` so a
+ * malformed config still surfaces even when state reads succeed.
  */
 export type ErrorContext = {
   lastGoodAt: Date | null;
   consecutiveFailures: number;
+  configErrors?: string[];
 };
 
 /**
@@ -642,6 +655,11 @@ export type ErrorContext = {
  * supplied an `errorContext` with `consecutiveFailures > 0`, OR when
  * the rendered state itself carries `status.error` (defensive fallback
  * for callers that forgot to pass errorContext).
+ *
+ * The config-error header (`⚠ Config error — see logs`) is emitted
+ * separately above the read-failure header when `errorContext.configErrors`
+ * is non-empty — both can fire on the same poll when a corrupt config
+ * and a read failure coincide.
  */
 function renderErrorHeader(
   state: CurrentState,
@@ -649,15 +667,32 @@ function renderErrorHeader(
 ): string[] {
   const failures = errorContext?.consecutiveFailures ?? 0;
   const stateHasError = !!state.status.error;
-  if (failures === 0 && !stateHasError) return [];
+  const configErrors = errorContext?.configErrors ?? [];
+  const hasConfigErrors = configErrors.length > 0;
 
-  const lastGoodAt = errorContext?.lastGoodAt ?? null;
-  const relative = lastGoodAt ? relativeTime(lastGoodAt, state.polledAt) : null;
-  const suffix = relative ? ` (${relative})` : "";
-  return [
-    `⚠ Status read failed — using last poll${suffix} | size=10 color=${TIER_HEX.red} shell=`,
-    "---",
-  ];
+  if (failures === 0 && !stateHasError && !hasConfigErrors) return [];
+
+  const lines: string[] = [];
+
+  if (hasConfigErrors) {
+    lines.push(
+      `⚠ Config error — see logs | size=10 color=${TIER_HEX.red} shell=`,
+    );
+  }
+
+  if (failures > 0 || stateHasError) {
+    const lastGoodAt = errorContext?.lastGoodAt ?? null;
+    const relative = lastGoodAt
+      ? relativeTime(lastGoodAt, state.polledAt)
+      : null;
+    const suffix = relative ? ` (${relative})` : "";
+    lines.push(
+      `⚠ Status read failed — using last poll${suffix} | size=10 color=${TIER_HEX.red} shell=`,
+    );
+  }
+
+  lines.push("---");
+  return lines;
 }
 
 /**

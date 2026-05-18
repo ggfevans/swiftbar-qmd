@@ -28,5 +28,8 @@ jobs:
       - name: Tests
         run: deno test --allow-read --allow-env --allow-net=localhost --allow-write=/tmp
 
+      - name: Snapshot tests
+        run: deno test --allow-read --allow-env --allow-write=/tmp tests/menu_snapshot_test.ts
+
       - name: Verify shebang exec bit
         run: test -x qmd.30s.ts
