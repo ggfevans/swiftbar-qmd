@@ -124,6 +124,14 @@ export interface PollSnapshot {
   daemon: DaemonState;
   collections: CollectionState[];
   recentOpFailures: FailureRecord[];
+  /**
+   * In-flight jobs at the time of this snapshot. Carried so the next
+   * poll's notification diff (lib/notify.ts) can detect job-complete /
+   * op-failure transitions by comparing prev.inFlightJobs against
+   * current.inFlightJobs / current.recentFailures (SPEC §8.3). Not in
+   * SPEC §15.1 verbatim; documented as a deviation in §14 wiring.
+   */
+  inFlightJobs: JobInfo[];
   computedTier: Tier;
   tierDrivers: string[];
   recentlyNotified: Record<string, string>; // dedupe key → ISO timestamp

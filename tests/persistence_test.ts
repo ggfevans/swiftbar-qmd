@@ -88,6 +88,7 @@ function makeSnapshot(): PollSnapshot {
       exitCode: 1,
       logPath: "/tmp/log",
     }],
+    inFlightJobs: [],
     computedTier: "amber",
     tierDrivers: ["Rackula last updated 1d ago (>24h)"],
     recentlyNotified: {

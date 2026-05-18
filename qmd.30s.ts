@@ -19,9 +19,11 @@ import {
   pruneFailuresOlderThan,
   pruneLogs,
   readSnapshot,
+  writeSnapshot,
 } from "./lib/persistence.ts";
 import { readCurrentState } from "./lib/state.ts";
 import { computeTierWithReason } from "./lib/rollup.ts";
+import { buildSnapshot, diffStates, emitNotifications } from "./lib/notify.ts";
 import type { ActionId } from "./lib/types.ts";
 
 async function main(): Promise<void> {
@@ -65,10 +67,9 @@ async function main(): Promise<void> {
     Deno.exit(0);
   }
   // Persistence layer (step 6). Ensures cache dir tree exists and
-  // loads the last snapshot for the upcoming rollup step.
+  // loads the last snapshot for diff + dedupe.
   await ensureCacheTree();
-  const _lastSnapshot = await readSnapshot();
-  void _lastSnapshot;
+  const prevSnapshot = await readSnapshot();
 
   // State reader (step 7). Composes SDK, HTTP, and FS sources into a
   // single CurrentState.
@@ -76,6 +77,15 @@ async function main(): Promise<void> {
 
   // Rollup (step 8). Compute the tier from current state.
   const tier = computeTierWithReason(state, config);
+
+  // Notifications (step 14). Diff against the previous snapshot,
+  // assemble the new snapshot, fire opt-in notifications, then persist.
+  // diff/emit/write happen before render so writeSnapshot runs even if
+  // SwiftBar drops the stdout pipe mid-render.
+  const events = diffStates(prevSnapshot, state, config);
+  const newSnapshot = buildSnapshot(state, tier, prevSnapshot);
+  await emitNotifications(events, newSnapshot, config);
+  await writeSnapshot(newSnapshot);
 
   // Render the §10 healthy menu (step 9). In-flight rewriting and
   // per-collection submenus are layered in via state.ts (step 12);
@@ -86,9 +96,6 @@ async function main(): Promise<void> {
   // window and rotate log files down to `retain_per_action`. Both
   // are best-effort filesystem ops; persistence.ts swallows errors
   // internally so they can't mask the rendered menu output.
-  //
-  // (deferred to step 14: writeSnapshot wiring + notification dedupe
-  // pruning will hook in here too.)
   await pruneFailuresOlderThan(config.rollup.error_window.amber_hours);
   await pruneLogs(config.logs.retain_per_action);
 

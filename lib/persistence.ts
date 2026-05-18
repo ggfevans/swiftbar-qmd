@@ -234,11 +234,41 @@ function hydrateSnapshot(raw: unknown): PollSnapshot | null {
     if (typeof v === "string") recentlyNotified[k] = v;
   }
 
+  // In-flight jobs were added in step 14 (PollSnapshot.inFlightJobs).
+  // Older snapshots written before this field existed simply lack it;
+  // treat as an empty array so the first post-upgrade poll behaves as
+  // if nothing was in flight (the next poll will populate the field).
+  const inFlightJobs: JobInfo[] = [];
+  if (Array.isArray(obj.inFlightJobs)) {
+    for (const raw of obj.inFlightJobs as Array<Record<string, unknown>>) {
+      if (
+        typeof raw.action !== "string" ||
+        typeof raw.pid !== "number" ||
+        typeof raw.startedAt !== "string" ||
+        !Array.isArray(raw.command) ||
+        typeof raw.logPath !== "string"
+      ) {
+        continue;
+      }
+      inFlightJobs.push({
+        action: raw.action as ActionId,
+        collection: typeof raw.collection === "string"
+          ? raw.collection
+          : undefined,
+        pid: raw.pid,
+        startedAt: new Date(raw.startedAt),
+        command: (raw.command as unknown[]).map((s) => String(s)),
+        logPath: raw.logPath,
+      });
+    }
+  }
+
   const snapshot: PollSnapshot = {
     pollTimestamp: obj.pollTimestamp,
     daemon: daemonState,
     collections,
     recentOpFailures,
+    inFlightJobs,
     computedTier: obj.computedTier as Tier,
     tierDrivers: (obj.tierDrivers as unknown[]).map((s) => String(s)),
     recentlyNotified,
