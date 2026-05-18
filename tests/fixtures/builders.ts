@@ -56,7 +56,13 @@ export function buildConfig(overrides?: Partial<Config>): Config {
  * baseline.
  */
 export function buildHealthyState(): CurrentState {
-  const polledAt = FIXED_POLLED_AT;
+  // Clone the anchored timestamp so each fixture is genuinely
+  // independent. `FIXED_POLLED_AT` is a mutable Date instance — if any
+  // future test ever mutated `state.polledAt` (`.setTime(...)`,
+  // `.setHours(...)`, etc) the change would leak into sibling
+  // fixtures. The header comment claims "deeply-independent" so make
+  // it true. See PR #1 finding A11.
+  const polledAt = new Date(FIXED_POLLED_AT.getTime());
   const collections: CollectionState[] = [
     {
       name: "gVault",
