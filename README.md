@@ -79,7 +79,7 @@ curl -fsSL https://raw.githubusercontent.com/ggfevans/swiftbar-qmd/main/install.
 
 Open SwiftBar → Preferences → Plugins → **Install from URL** and paste:
 
-```
+```text
 https://raw.githubusercontent.com/ggfevans/swiftbar-qmd/main/qmd.30s.ts
 ```
 
