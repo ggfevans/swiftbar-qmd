@@ -48,12 +48,13 @@ export type StateSources = {
   readJobPidFiles: () => Promise<JobInfo[]>;
   readRecentFailures: () => Promise<FailureRecord[]>;
   /**
-   * Enumerate log files in `${CACHE_DIR}/logs/` — wraps
-   * `persistence.logsDirContents` in production. Caller sorts the
-   * result newest-first by mtime so `state.recentLogs[0]` is the
-   * "Show last output" target (SPEC §10.2).
+   * Enumerate log files in the action-runner logs directory — wraps
+   * `persistence.logsDirContents` in production, threading
+   * `config.logs.directory` through so the override flows end-to-end
+   * (PR #1 D5). Caller sorts the result newest-first by mtime so
+   * `state.recentLogs[0]` is the "Show last output" target (SPEC §10.2).
    */
-  readLogs: () => Promise<LogFileInfo[]>;
+  readLogs: (config: Config) => Promise<LogFileInfo[]>;
   isProcessAlive: (pid: number) => boolean;
   readExitCodeFromLog: (logPath: string) => Promise<number>;
   appendFailure: (failure: FailureRecord) => Promise<void>;
@@ -344,7 +345,10 @@ const PRODUCTION_SOURCES: StateSources = {
   probeDaemon: productionProbeDaemon,
   readJobPidFiles: productionReadJobPidFiles,
   readRecentFailures: productionReadRecentFailures,
-  readLogs: productionLogsDirContents,
+  // Threads `config.logs.directory` into the persistence layer's
+  // log-directory walk so the override flows end-to-end (PR #1 D5).
+  readLogs: (config: Config) =>
+    productionLogsDirContents(config.logs.directory),
   isProcessAlive: productionIsProcessAlive,
   readExitCodeFromLog: productionReadExitCodeFromLog,
   appendFailure: productionAppendFailure,
@@ -406,7 +410,7 @@ export async function readCurrentState(
     s.probeDaemon(config),
     s.readJobPidFiles(),
     s.readRecentFailures(),
-    s.readLogs(),
+    s.readLogs(config),
   ]);
 
   let collections: CollectionState[];

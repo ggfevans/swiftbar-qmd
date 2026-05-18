@@ -49,8 +49,28 @@ function jobsDir(): string {
   return join(cacheDir(), "jobs");
 }
 
+/**
+ * Default logs directory: `${cacheDir()}/logs`.
+ *
+ * Callers (`runAction` in lib/actions.ts, the poll loop in qmd.30s.ts)
+ * that want to honour `config.logs.directory` should resolve the
+ * configured path themselves and pass it explicitly to the log-
+ * directory APIs below — `cacheDir() + /logs` is only the fallback
+ * when no override is supplied. See PR #1 D5.
+ */
 function logsDir(): string {
   return join(cacheDir(), "logs");
+}
+
+/**
+ * Resolve a logs directory: prefer the explicit `override` when
+ * non-empty; otherwise fall back to `${cacheDir()}/logs`. Exported
+ * so callers can derive the directory the same way the persistence
+ * APIs do, and so tests can assert the fallback behaviour.
+ */
+export function resolveLogsDir(override?: string | null): string {
+  if (override && override.length > 0) return override;
+  return logsDir();
 }
 
 function sentinelsDir(): string {
@@ -143,8 +163,8 @@ async function ensureJobsDir(): Promise<void> {
   await ensureDir(jobsDir());
 }
 
-async function ensureLogsDir(): Promise<void> {
-  await ensureDir(logsDir());
+async function ensureLogsDir(dir: string = logsDir()): Promise<void> {
+  await ensureDir(dir);
 }
 
 async function ensureSentinelsDir(): Promise<void> {
@@ -627,10 +647,15 @@ export async function pruneFailuresOlderThan(hours: number): Promise<void> {
  * List log files in `logs/` with parsed action prefix and stat info.
  * Files that don't match the `<action>[:collection]-<ts>.log` pattern
  * are skipped. Missing dir → empty array.
+ *
+ * `logsDirOverride` lets callers honour `config.logs.directory` (PR
+ * #1 D5). Falls back to `${cacheDir()}/logs` when null/empty.
  */
-export async function logsDirContents(): Promise<LogFileInfo[]> {
-  await ensureLogsDir();
-  const dir = logsDir();
+export async function logsDirContents(
+  logsDirOverride?: string | null,
+): Promise<LogFileInfo[]> {
+  const dir = resolveLogsDir(logsDirOverride);
+  await ensureLogsDir(dir);
   const out: LogFileInfo[] = [];
 
   let entries: Deno.DirEntry[];
@@ -673,10 +698,16 @@ export async function logsDirContents(): Promise<LogFileInfo[]> {
  * For each action[:collection] group in `logs/`, keep only the most
  * recent `retainPerAction` files (by mtime) and delete the rest.
  * `retainPerAction <= 0` deletes everything matching a known action.
+ *
+ * `logsDirOverride` lets callers honour `config.logs.directory` (PR
+ * #1 D5). Falls back to `${cacheDir()}/logs` when null/empty.
  */
-export async function pruneLogs(retainPerAction: number): Promise<void> {
-  await ensureLogsDir();
-  const dir = logsDir();
+export async function pruneLogs(
+  retainPerAction: number,
+  logsDirOverride?: string | null,
+): Promise<void> {
+  const dir = resolveLogsDir(logsDirOverride);
+  await ensureLogsDir(dir);
 
   let entries: Deno.DirEntry[];
   try {

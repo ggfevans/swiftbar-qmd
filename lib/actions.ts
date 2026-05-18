@@ -72,7 +72,10 @@ async function productionSpawnDetached(
   commandString: string,
   logPath: string,
 ): Promise<number> {
-  await ensureDir(join(cacheDir(), "logs"));
+  // Use the resolved logPath's parent directly — honours
+  // `config.logs.directory` when the caller threaded it through
+  // `buildLogPath`. See PR #1 D5.
+  await ensureDir(join(logPath, ".."));
   const shell =
     `( ${commandString}; echo "EXIT_CODE=$?" >> "${logPath}" ) >> "${logPath}" 2>&1 &\necho $!`;
   const proc = new Deno.Command("bash", {
@@ -342,6 +345,10 @@ function buildCommand(
 /**
  * Generate the log filename for this run. SPEC §15.3 timestamp form.
  *
+ * `logsDir` honours `config.logs.directory` (PR #1 D5). Defaults to
+ * `${cacheDir()}/logs` when omitted so existing callers that haven't
+ * been wired through the config don't regress.
+ *
  * The timestamp strips dashes as well as `:` and `.` — without that,
  * the resulting filename (e.g. `update-all-2026-05-17T100000000Z.log`)
  * has internal dashes inside the timestamp segment, and
@@ -352,10 +359,14 @@ function buildLogPath(
   id: ActionId,
   collection: string | undefined,
   now: Date,
+  logsDir?: string,
 ): string {
   const stamp = now.toISOString().replace(/[-:.]/g, "");
   const key = collection ? `${id}:${collection}` : id;
-  return join(cacheDir(), "logs", `${key}-${stamp}.log`);
+  const dir = logsDir && logsDir.length > 0
+    ? logsDir
+    : join(cacheDir(), "logs");
+  return join(dir, `${key}-${stamp}.log`);
 }
 
 // ─── Public API ────────────────────────────────────────────────
@@ -387,6 +398,10 @@ export async function runAction(
   id: ActionId,
   args: Record<string, string>,
   deps?: Partial<ActionDeps>,
+  // `logsDir` honours `config.logs.directory` (PR #1 D5). Falls back
+  // to `${cacheDir()}/logs` when omitted/empty. Pass-through to
+  // buildLogPath so action log files land in the configured tree.
+  logsDir?: string,
 ): Promise<void> {
   const d: ActionDeps = {
     readJobPidFile: deps?.readJobPidFile ?? PRODUCTION_DEPS.readJobPidFile,
@@ -511,7 +526,7 @@ export async function runAction(
 
   // ── Spawn detached and persist the PID. ───────────────────
   const startedAt = new Date();
-  const logPath = buildLogPath(id, collection, startedAt);
+  const logPath = buildLogPath(id, collection, startedAt, logsDir);
 
   let pid: number;
   try {

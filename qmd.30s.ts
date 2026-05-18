@@ -19,6 +19,7 @@ import {
   pruneFailuresOlderThan,
   pruneLogs,
   readSnapshot,
+  resolveLogsDir,
   writeSnapshot,
 } from "./lib/persistence.ts";
 import { readCurrentStateWithSnapshot } from "./lib/state.ts";
@@ -45,7 +46,19 @@ async function main(): Promise<void> {
         argsMap[flag.slice(2)] = Deno.args[i + 1] ?? "";
       }
     }
-    await runAction(actionId, argsMap);
+    // Load config so the action runner can honour
+    // `config.logs.directory` (PR #1 D5). On config-error, fall back
+    // to the default `${cacheDir()}/logs` — the action runner can't
+    // surface config errors to the user (no UI in this branch), so
+    // we degrade silently. The poll path renders the config-error
+    // header on the next tick.
+    const { config: actionConfig } = await loadConfig();
+    await runAction(
+      actionId,
+      argsMap,
+      undefined,
+      resolveLogsDir(actionConfig.logs.directory),
+    );
     Deno.exit(0);
   }
 
@@ -129,7 +142,10 @@ async function main(): Promise<void> {
   // are best-effort filesystem ops; persistence.ts swallows errors
   // internally so they can't mask the rendered menu output.
   await pruneFailuresOlderThan(config.rollup.error_window.amber_hours);
-  await pruneLogs(config.logs.retain_per_action);
+  await pruneLogs(
+    config.logs.retain_per_action,
+    resolveLogsDir(config.logs.directory),
+  );
 
   Deno.exit(0);
 }
