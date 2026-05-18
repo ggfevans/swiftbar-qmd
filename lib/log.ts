@@ -1,9 +1,28 @@
 // ─── Paths ─────────────────────────────────────────────────────
 
-const HOME = Deno.env.get("HOME") ?? "";
-const CACHE_DIR = `${HOME}/.cache/swiftbar-qmd`;
-const LOG_PATH = `${CACHE_DIR}/error.log`;
-const LOG_BACKUP_PATH = `${LOG_PATH}.1`;
+/**
+ * Cache directory root. Mirrors `lib/persistence.ts cacheDir()` —
+ * duplicated inline because lib/persistence.ts imports lib/log.ts,
+ * so importing back would create a cycle. The env var is read on
+ * every call (not at module load) so tests can mutate the
+ * environment without re-importing.
+ *
+ * See PR #1 finding A6.
+ */
+function cacheDir(): string {
+  const override = Deno.env.get("SWIFTBAR_QMD_CACHE_DIR");
+  if (override && override.length > 0) return override;
+  const home = Deno.env.get("HOME") ?? "";
+  return `${home}/.cache/swiftbar-qmd`;
+}
+
+function logPath(): string {
+  return `${cacheDir()}/error.log`;
+}
+
+function logBackupPath(): string {
+  return `${logPath()}.1`;
+}
 
 // ─── Rotation ──────────────────────────────────────────────────
 
@@ -15,11 +34,13 @@ const MAX_LOG_BYTES = 1024 * 1024; // 1 MB
  * fresh file. Errors are swallowed — rotation is best-effort.
  */
 async function rotateIfNeeded(): Promise<void> {
+  const current = logPath();
+  const backup = logBackupPath();
   try {
-    const stat = await Deno.stat(LOG_PATH);
+    const stat = await Deno.stat(current);
     if (!stat.isFile) return;
     if (stat.size <= MAX_LOG_BYTES) return;
-    await Deno.rename(LOG_PATH, LOG_BACKUP_PATH);
+    await Deno.rename(current, backup);
   } catch {
     // File missing or stat/rename failed — nothing to rotate.
   }
@@ -56,10 +77,10 @@ async function writeLine(
   error?: Error,
 ): Promise<void> {
   try {
-    await Deno.mkdir(CACHE_DIR, { recursive: true });
+    await Deno.mkdir(cacheDir(), { recursive: true });
     await rotateIfNeeded();
     const line = formatLine(level, category, message, error);
-    await Deno.writeTextFile(LOG_PATH, line, { append: true });
+    await Deno.writeTextFile(logPath(), line, { append: true });
   } catch {
     // Swallow: logging failures must never propagate.
   }
