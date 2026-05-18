@@ -12,11 +12,12 @@
       "README.md",
       "AGENTS.md",
       "session-report.md",
-      "blockers.md"
+      "blockers.md",
+      "coverage/"
     ]
   },
   "lint": {
-    "exclude": ["docs/", ".github/"]
+    "exclude": ["docs/", ".github/", "coverage/"]
   },
   "imports": {
     "@std/yaml": "jsr:@std/yaml@^1",
