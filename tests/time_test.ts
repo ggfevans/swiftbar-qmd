@@ -182,6 +182,26 @@ Deno.test("relativeTime: defaults `now` to current time", () => {
   assertStringIncludes(out, "minute");
 });
 
+Deno.test("relativeTime: invalid `date` → '—' fallback (PR #1 A9)", () => {
+  // Regression: pre-A9, an Invalid Date's getTime() returned NaN, all
+  // the `<` bucket comparisons short-circuited to false, and execution
+  // fell through to the final `${w} weeks ago` template — rendering
+  // "NaN weeks ago" in the dropdown. The em-dash placeholder is the
+  // SPEC-standard "no signal" indicator (see lib/menu.ts).
+  const now = new Date("2026-05-17T12:00:00Z");
+  const invalid = new Date("not a date");
+  assertEquals(relativeTime(invalid, now), "—");
+});
+
+Deno.test("relativeTime: invalid `now` → '—' fallback (PR #1 A9)", () => {
+  // Belt-and-braces: the `now` param defaults to `new Date()` so this
+  // is mainly a defensive guard. If a caller passes a corrupt clock
+  // we still degrade gracefully rather than emitting NaN copy.
+  const past = new Date("2026-05-17T12:00:00Z");
+  const invalidNow = new Date("not a date");
+  assertEquals(relativeTime(past, invalidNow), "—");
+});
+
 // ─── withTimeout ───────────────────────────────────────────────
 
 Deno.test("withTimeout: resolves before timeout passes value through", async () => {

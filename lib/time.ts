@@ -65,9 +65,16 @@ export function compactDuration(ms: number): string {
  *   ≥ 14d  → "N weeks ago"
  *
  * Future dates collapse to "just now".
+ *
+ * Invalid inputs (`new Date("garbage")`, `null` snuck through, etc.)
+ * return the em-dash placeholder `"—"` rather than rendering
+ * "NaN weeks ago". See PR #1 finding A9.
  */
 export function relativeTime(date: Date, now: Date = new Date()): string {
-  const elapsed = now.getTime() - date.getTime();
+  const dateMs = date?.getTime?.();
+  const nowMs = now?.getTime?.();
+  if (!Number.isFinite(dateMs) || !Number.isFinite(nowMs)) return "—";
+  const elapsed = (nowMs as number) - (dateMs as number);
   if (elapsed < MS_PER_MINUTE) return "just now";
 
   if (elapsed < MS_PER_HOUR) {
