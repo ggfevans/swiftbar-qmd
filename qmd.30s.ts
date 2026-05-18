@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --allow-net=localhost:8181 --allow-read=$HOME/.cache/qmd,$HOME/.config/swiftbar-qmd,$HOME/.cache/swiftbar-qmd --allow-write=$HOME/.cache/swiftbar-qmd,$HOME/.config/swiftbar-qmd --allow-run=qmd,open,osascript,kill --allow-env=HOME,PATH,EDITOR
+#!/usr/bin/env -S deno run --allow-net=localhost:8181 --allow-read=$HOME/.cache/qmd,$HOME/.config/swiftbar-qmd,$HOME/.cache/swiftbar-qmd --allow-write=$HOME/.cache/swiftbar-qmd,$HOME/.config/swiftbar-qmd --allow-run=qmd,open,osascript,kill,bash --allow-env=HOME,PATH,EDITOR
 
 // <swiftbar.title>swiftbar-qmd</swiftbar.title>
 // <swiftbar.version>v0.1.0</swiftbar.version>
@@ -8,14 +8,32 @@
 // <swiftbar.dependencies>deno,qmd</swiftbar.dependencies>
 // <swiftbar.abouturl>https://github.com/ggfevans/swiftbar-qmd</swiftbar.abouturl>
 
+import { runAction } from "./lib/actions.ts";
 import { loadConfig } from "./lib/config.ts";
 import { detectFirstRunState } from "./lib/detect.ts";
 import { renderFirstRunMenu, renderMenu } from "./lib/menu.ts";
 import { ensureCacheTree, readSnapshot } from "./lib/persistence.ts";
 import { readCurrentState } from "./lib/state.ts";
 import { computeTierWithReason } from "./lib/rollup.ts";
+import type { ActionId } from "./lib/types.ts";
 
 async function main(): Promise<void> {
+  // Action invocation path (SPEC §13.1). When SwiftBar re-invokes the
+  // plugin with `--action <id> [--flag value ...]`, route to the
+  // action runner and exit; the poll/render path below is skipped.
+  if (Deno.args[0] === "--action") {
+    const actionId = Deno.args[1] as ActionId;
+    const argsMap: Record<string, string> = {};
+    for (let i = 2; i < Deno.args.length; i += 2) {
+      const flag = Deno.args[i];
+      if (flag?.startsWith("--")) {
+        argsMap[flag.slice(2)] = Deno.args[i + 1] ?? "";
+      }
+    }
+    await runAction(actionId, argsMap);
+    Deno.exit(0);
+  }
+
   const { config } = await loadConfig();
   const firstRun = await detectFirstRunState(config);
   if (firstRun !== "ok") {

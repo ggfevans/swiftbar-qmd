@@ -367,6 +367,60 @@ export async function readJobPidFiles(): Promise<JobInfo[]> {
 }
 
 /**
+ * Read a single pid file by action (+ optional collection). Returns
+ * `null` when the file is missing or unparseable. Used by the action
+ * runner's locking check (SPEC §13.3) — we need a per-key fetch, not
+ * the directory scan that `readJobPidFiles` performs.
+ */
+export async function readJobPidFile(
+  action: ActionId,
+  collection?: string,
+): Promise<JobInfo | null> {
+  await ensureJobsDir();
+  const path = join(jobsDir(), jobFileName(action, collection));
+  let text: string;
+  try {
+    text = await Deno.readTextFile(path);
+  } catch (err) {
+    if (isNotFound(err)) return null;
+    await logError(
+      "persistence",
+      `readJobPidFile: read failed for ${path}`,
+      err instanceof Error ? err : new Error(String(err)),
+    );
+    return null;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return null;
+  }
+  const raw = parsed as Record<string, unknown>;
+  if (
+    typeof raw.action !== "string" ||
+    typeof raw.pid !== "number" ||
+    typeof raw.startedAt !== "string" ||
+    !Array.isArray(raw.command) ||
+    typeof raw.logPath !== "string"
+  ) {
+    return null;
+  }
+  return {
+    action: raw.action as ActionId,
+    collection: typeof raw.collection === "string" ? raw.collection : undefined,
+    pid: raw.pid,
+    startedAt: new Date(raw.startedAt),
+    command: (raw.command as unknown[]).map((s) => String(s)),
+    logPath: raw.logPath,
+  };
+}
+
+/**
  * Write a pid file for an in-flight job. Per SPEC §15.3, `collection`
  * is serialised as `null` (not omitted) when absent. The filename is
  * `<action>.pid` or `<action>:<collection>.pid`.
