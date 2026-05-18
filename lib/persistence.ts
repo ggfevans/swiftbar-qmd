@@ -555,8 +555,19 @@ export async function atomicCreateJobPidFile(
       command: [],
       logPath: "",
     });
-    await file.write(new TextEncoder().encode(payload));
-    file.close();
+    try {
+      await file.write(new TextEncoder().encode(payload));
+    } catch (writeErr) {
+      // Write failed — remove the half-written file so the lock is released.
+      try {
+        await Deno.remove(path);
+      } catch {
+        // Best-effort cleanup; ignore removal errors.
+      }
+      throw writeErr;
+    } finally {
+      file.close();
+    }
     return true;
   } catch (err) {
     if (err instanceof Deno.errors.AlreadyExists) return false;

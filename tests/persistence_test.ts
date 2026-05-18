@@ -25,28 +25,61 @@ import {
 // ─── Helpers ───────────────────────────────────────────────────
 
 /**
+ * Simple async mutex to serialize access to withCacheDir. Tests can
+ * run in parallel, and mutating the global SWIFTBAR_QMD_CACHE_DIR env
+ * var without locking causes races.
+ */
+class Mutex {
+  private locked = false;
+  private waiting: Array<() => void> = [];
+
+  async acquire(): Promise<void> {
+    while (this.locked) {
+      await new Promise<void>((resolve) => this.waiting.push(resolve));
+    }
+    this.locked = true;
+  }
+
+  release(): void {
+    this.locked = false;
+    const next = this.waiting.shift();
+    if (next) next();
+  }
+}
+
+const cacheDirMutex = new Mutex();
+
+/**
  * Run a test body with a fresh CACHE_DIR override. The env var is set
  * before the body runs and cleared afterwards so subsequent tests see
  * their own per-temp-dir setting (not leaked state).
+ *
+ * Serializes access to the global env var to prevent races when tests
+ * run in parallel.
  */
 async function withCacheDir<T>(
   fn: (dir: string) => Promise<T>,
 ): Promise<T> {
-  const dir = await Deno.makeTempDir({
-    dir: "/tmp",
-    prefix: "swiftbar-qmd-persistence-",
-  });
-  const prev = Deno.env.get("SWIFTBAR_QMD_CACHE_DIR");
-  Deno.env.set("SWIFTBAR_QMD_CACHE_DIR", dir);
+  await cacheDirMutex.acquire();
   try {
-    return await fn(dir);
-  } finally {
-    if (prev === undefined) {
-      Deno.env.delete("SWIFTBAR_QMD_CACHE_DIR");
-    } else {
-      Deno.env.set("SWIFTBAR_QMD_CACHE_DIR", prev);
+    const dir = await Deno.makeTempDir({
+      dir: "/tmp",
+      prefix: "swiftbar-qmd-persistence-",
+    });
+    const prev = Deno.env.get("SWIFTBAR_QMD_CACHE_DIR");
+    Deno.env.set("SWIFTBAR_QMD_CACHE_DIR", dir);
+    try {
+      return await fn(dir);
+    } finally {
+      if (prev === undefined) {
+        Deno.env.delete("SWIFTBAR_QMD_CACHE_DIR");
+      } else {
+        Deno.env.set("SWIFTBAR_QMD_CACHE_DIR", prev);
+      }
+      await Deno.remove(dir, { recursive: true });
     }
-    await Deno.remove(dir, { recursive: true });
+  } finally {
+    cacheDirMutex.release();
   }
 }
 

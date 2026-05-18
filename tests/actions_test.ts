@@ -356,6 +356,44 @@ Deno.test("runAction: placeholder write failure → lock released, no spawn", as
   assertEquals(rec.exitCalls.length, 0);
 });
 
+Deno.test("runAction: post-spawn writeJobPidFile failure → lock released", async () => {
+  // If the real PID write (after spawn) fails, the runner must release
+  // the lock so the action can be retried. The placeholder PID file
+  // stays on disk (blocking future runs) unless we delete it.
+  const rec = makeRecorder();
+  let callCount = 0;
+  const deps = makeDeps(rec, {
+    writeJobPidFile: (action, info) => {
+      rec.writeJobPidFileCalls.push({ action, info });
+      callCount++;
+      // First call (placeholder with pid=-1) succeeds; second call (real
+      // PID after spawn) fails.
+      if (callCount === 1) {
+        return Promise.resolve();
+      } else {
+        return Promise.reject(new Error("disk-full on real PID write"));
+      }
+    },
+  });
+
+  await runAction("update-all", {}, deps);
+
+  // Lock was acquired.
+  assertEquals(rec.tryAcquireLockCalls.length, 1);
+
+  // Spawn succeeded.
+  assertEquals(rec.spawnDetachedCalls.length, 1);
+
+  // Two writeJobPidFile calls: placeholder + real PID.
+  assertEquals(rec.writeJobPidFileCalls.length, 2);
+
+  // Lock was released (PID file deleted) after the second write failed.
+  assertEquals(rec.deleteJobPidFileCalls.length, 1);
+
+  // No exit call — the runner returns after logging the error.
+  assertEquals(rec.exitCalls.length, 0);
+});
+
 // ─── Recheck (sentinel) ────────────────────────────────────────
 
 Deno.test("runAction: recheck writes the 'recheck' sentinel and does not spawn", async () => {

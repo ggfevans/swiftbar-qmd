@@ -567,7 +567,16 @@ export async function runAction(
   }
 
   // ── Locking (SPEC §13.3, D8 atomic O_EXCL). ──────────────
-  const locked = await d.tryAcquireLock(id, collection);
+  let locked: boolean;
+  try {
+    locked = await d.tryAcquireLock(id, collection);
+  } catch (err) {
+    await logInfo(
+      "actions",
+      `${id}${collection ? `:${collection}` : ""}: lock acquisition failed; skipping spawn: ${err}`,
+    );
+    return;
+  }
   if (!locked) {
     await logInfo(
       "actions",
@@ -648,5 +657,15 @@ export async function runAction(
       `${id}: writeJobPidFile failed`,
       err instanceof Error ? err : new Error(String(err)),
     );
+    // Remove the placeholder PID file so the lock is released.
+    try {
+      await d.deleteJobPidFile(id, collection);
+    } catch (removeErr) {
+      await logError(
+        "actions",
+        `${id}: failed to remove PID file after writeJobPidFile failure`,
+        removeErr instanceof Error ? removeErr : new Error(String(removeErr)),
+      );
+    }
   }
 }
