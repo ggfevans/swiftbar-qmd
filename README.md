@@ -54,7 +54,7 @@ on your Mac.
 
 ```bash
 mkdir -p ~/Library/Application\ Support/SwiftBar/Plugins
-curl -L https://raw.githubusercontent.com/ggfevans/qmd-swiftbar/v1.0.0/qmd.30s.ts \
+curl -L https://raw.githubusercontent.com/ggfevans/qmd-swiftbar/main/qmd.30s.ts \
   -o ~/Library/Application\ Support/SwiftBar/Plugins/qmd.30s.ts
 chmod +x ~/Library/Application\ Support/SwiftBar/Plugins/qmd.30s.ts
 # Restart SwiftBar; the icon appears within 30 seconds.
@@ -72,7 +72,7 @@ if it isn't already present. Pass a tag or branch as the first positional
 argument to pin a specific version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ggfevans/qmd-swiftbar/main/install.sh | bash -s v1.0.0
+curl -fsSL https://raw.githubusercontent.com/ggfevans/qmd-swiftbar/main/install.sh | bash
 ```
 
 ### SwiftBar "Install from URL"

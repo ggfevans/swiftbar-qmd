@@ -1,4 +1,4 @@
-# qmd-swiftbar — Implementation checklist
+# qmd-swiftbar: Implementation checklist
 
 Working checklist tracking implementation from empty repo through v1.0.0 release. Each step maps to a prompt in [`docs/planning/PROMPTS.md`](docs/planning/PROMPTS.md) and a section in [`docs/planning/SPEC.md`](docs/planning/SPEC.md).
 

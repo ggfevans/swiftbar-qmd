@@ -1557,7 +1557,7 @@ Three install paths, all sharing the same GitHub-hosted `.ts` artifact.
 
 ```bash
 mkdir -p ~/Library/Application\ Support/SwiftBar/Plugins
-curl -L https://raw.githubusercontent.com/ggfevans/qmd-swiftbar/v1.0.0/qmd.30s.ts \
+curl -L https://raw.githubusercontent.com/ggfevans/qmd-swiftbar/main/qmd.30s.ts \
   -o ~/Library/Application\ Support/SwiftBar/Plugins/qmd.30s.ts
 chmod +x ~/Library/Application\ Support/SwiftBar/Plugins/qmd.30s.ts
 # Restart SwiftBar; the icon appears within 30 seconds.
@@ -1575,7 +1575,7 @@ REPO="ggfevans/qmd-swiftbar"
 # Default to the latest tagged release so curl-pipe-bash installs are
 # reproducible. Pass any ref (tag, branch, SHA) as the first arg to
 # override — e.g. `bash -s main` to track tip-of-tree.
-REF="${1:-v1.0.0}"
+REF="${1:-main}"
 PLUGIN_DIR="$HOME/Library/Application Support/SwiftBar/Plugins"
 CONFIG_DIR="$HOME/.config/qmd-swiftbar"
 
@@ -1596,7 +1596,7 @@ mkdir -p "$PLUGIN_DIR" "$CONFIG_DIR"
 # Resolve the ref to a SHA once so the two-file download is atomic.
 # Without this, the ref ($REF) could move (e.g. a push to `main`)
 # between the two curls, producing a mixed install. Tags are normally
-# immutable so this is a no-op for the default v1.0.0 install — but
+# immutable so this is a no-op for the default main install — but
 # the cost is one HTTPS call and the guarantee is worth it. Falls
 # back to the ref directly if `git ls-remote` isn't available (rare).
 SHA="$REF"
@@ -1643,7 +1643,7 @@ echo "Installed (ref=$REF, sha=${SHA:0:12}). Restart SwiftBar (Cmd-Q in the Swif
 
 Notes on the design choices (per PR #1 review D1–D4):
 
-- **Pinned default ref (`v1.0.0`).** The canonical one-liner lands users on the most recently tagged release rather than the moving `main` branch, so a `curl | bash` today and a `curl | bash` next month install bit-identical code. Users who want tip-of-tree pass `bash -s main` explicitly.
+- **Default ref (`main`).** Until a tagged release exists, the one-liner installs from `main`. Once `v1.0.0` is tagged, the default will switch to the pinned tag so a `curl | bash` today and a `curl | bash` next month install bit-identical code. Users who want tip-of-tree pass `bash -s main` explicitly.
 - **`open -Ra SwiftBar` preflight.** Replaces the original `test -d /Applications/SwiftBar.app` so users with SwiftBar in `~/Applications/`, Setapp, or any other LaunchServices-known location aren't rejected.
 - **Ref → SHA pre-resolution.** A `git ls-remote` round trip resolves the ref to an immutable SHA before either curl runs, so the two files always come from the same commit. The pinned-tag default makes this a no-op in the common case, but it's essential when callers pass `bash -s main`.
 - **Curl timeouts + retries.** `--retry 3 --retry-all-errors --connect-timeout 10 --max-time 60` keeps a flaky network from leaving install in a half-complete state.
@@ -1651,7 +1651,7 @@ Notes on the design choices (per PR #1 review D1–D4):
 One-liner usage:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ggfevans/qmd-swiftbar/v1.0.0/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ggfevans/qmd-swiftbar/main/install.sh | bash
 ```
 
 ### 21.3 Path D — SwiftBar "Install from URL"

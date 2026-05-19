@@ -12,6 +12,7 @@ import { compactDuration, relativeTime } from "./time.ts";
 import { actionLabel, computeTier } from "./rollup.ts";
 import { CONFIG_PATH } from "./config.ts";
 import { cacheDir } from "./persistence.ts";
+import { logError } from "./log.ts";
 import { fromFileUrl } from "@std/path";
 
 // ─── Icon glyphs (SPEC §9.3) ──────────────────────────────────
@@ -410,10 +411,9 @@ function renderCollectionSubmenu(
 
   const safeName = SAFE_COLLECTION_NAME.test(c.name);
   if (!safeName) {
-    // One-off debug: lands in SwiftBar's plugin console alongside any
-    // other stderr from the script; nothing else in renderMenu touches I/O.
-    console.error(
-      `qmd-swiftbar: collection name "${c.name}" contains unsafe characters; submenu actions suppressed`,
+    logError(
+      "menu",
+      `collection name "${c.name}" contains unsafe characters; submenu actions suppressed`,
     );
   }
 

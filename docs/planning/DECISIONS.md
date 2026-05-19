@@ -1,4 +1,4 @@
-# qmd-swiftbar — Decision log
+# qmd-swiftbar: Decision log
 
 This document records the 16 architectural decisions taken during the v1 scoping conversation, with the alternatives considered and the rationale for each choice. Use it when you need to understand *why* something is the way it is in [`SPEC.md`](SPEC.md), or when reconsidering a decision because requirements have shifted.
 

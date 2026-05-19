@@ -1,4 +1,4 @@
-# qmd-swiftbar — Implementation blueprint and code-gen prompts
+# qmd-swiftbar: Implementation blueprint and code-gen prompts
 
 This document drives implementation. It contains:
 
