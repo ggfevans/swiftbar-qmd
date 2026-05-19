@@ -2,15 +2,12 @@
 set -euo pipefail
 
 REPO="ggfevans/qmd-swiftbar"
-# Default to the latest tagged release so curl-pipe-bash installs are
-# reproducible. Pass any ref (tag, branch, SHA) as the first arg to
-# override — e.g. `bash -s main` to track tip-of-tree.
-REF="${1:-main}"
+# Default to the latest GitHub Release. Pass a tag (e.g. `v1.0.0`)
+# as the first arg to pin to a specific release.
+TAG="${1:-latest}"
 PLUGIN_DIR="$HOME/Library/Application Support/SwiftBar/Plugins"
 CONFIG_DIR="$HOME/.config/qmd-swiftbar"
-
-# Preflight
-command -v deno >/dev/null || { echo "ERROR: deno not found. Install from https://deno.com/"; exit 1; }
+BINARY_NAME="qmd-swiftbar"
 
 # SwiftBar can live in /Applications/, ~/Applications/, or any other
 # location LaunchServices knows about (Setapp, manual install). Use
@@ -21,31 +18,18 @@ if ! open -Ra "SwiftBar" >/dev/null 2>&1; then
   exit 1
 fi
 
-mkdir -p "$PLUGIN_DIR" "$CONFIG_DIR"
+# Detect architecture. SwiftBar is macOS-only, so we only need to
+# distinguish arm64 (Apple Silicon) from x86_64 (Intel). The GitHub
+# Release artefacts are named qmd-swiftbar-arm64 and
+# qmd-swiftbar-x86_64 to match.
+ARCH=$(uname -m)
+case "$ARCH" in
+  arm64) ARTIFACT="qmd-swiftbar-arm64" ;;
+  x86_64) ARTIFACT="qmd-swiftbar-x86_64" ;;
+  *) echo "ERROR: unsupported architecture: $ARCH"; exit 1 ;;
+esac
 
-# Resolve the ref to a SHA once so the two-file download is atomic.
-# Without this, the ref ($REF) could move (e.g. a push to `main`)
-# between the two curls, producing a mixed install. Tags are normally
-# immutable so this is a no-op for the default main install — but
-# the cost is one HTTPS call and the guarantee is worth it. Falls
-# back to the ref directly if `git ls-remote` isn't available (rare).
-SHA="$REF"
-if command -v git >/dev/null 2>&1; then
-  # `git ls-remote` prints "<sha>\t<full-ref>" for each match. We
-  # interrogate refs/heads/<REF>, refs/tags/<REF>^{} (peeled tag for
-  # annotated-tag commit SHAs), and refs/tags/<REF> (the tag object).
-  # The peeled ref (^{}) is listed first so annotated tags resolve to
-  # the commit SHA, not the tag object SHA — GitHub raw URLs need a
-  # commit-ish, and the tag object SHA would cause a 404.
-  RESOLVED=$(
-    git ls-remote "https://github.com/$REPO" \
-      "refs/heads/$REF" "refs/tags/$REF^{}" "refs/tags/$REF" 2>/dev/null |
-      awk '{print $1; exit}' || true
-  )
-  if [ -n "${RESOLVED:-}" ]; then
-    SHA="$RESOLVED"
-  fi
-fi
+mkdir -p "$PLUGIN_DIR" "$CONFIG_DIR"
 
 # Curl flags rationale (PR #1 D4): timeouts + retries make first-run
 # UX feel grown-up on flaky connections. `--retry-all-errors` opts
@@ -58,20 +42,64 @@ CURL_OPTS=(
   --retry 3
   --retry-all-errors
   --connect-timeout 10
-  --max-time 60
+  --max-time 120
 )
 
-# Download script and example config — pinned to $SHA for atomicity.
-curl "${CURL_OPTS[@]}" "https://raw.githubusercontent.com/$REPO/$SHA/qmd.30s.ts" \
-  -o "$PLUGIN_DIR/qmd.30s.ts"
-curl "${CURL_OPTS[@]}" "https://raw.githubusercontent.com/$REPO/$SHA/config.example.yml" \
+# Resolve the download URL. For the default "latest" tag, query the
+# GitHub Releases API to get the tag name (needed for the
+# checksum URL). For an explicit tag, use it directly.
+if [ "$TAG" = "latest" ]; then
+  RELEASE_TAG=$(
+    curl "${CURL_OPTS[@]}" "https://api.github.com/repos/$REPO/releases/latest" |
+      grep '"tag_name"' | head -1 |
+      sed -E 's/.*"tag_name": *"([^"]+)".*/\1/'
+  )
+  if [ -z "${RELEASE_TAG:-}" ]; then
+    echo "ERROR: no GitHub Release found for $REPO."
+    echo "A release must exist before the binary installer can run."
+    echo "Until then, install from source: https://github.com/$REPO#install"
+    exit 1
+  fi
+else
+  RELEASE_TAG="$TAG"
+fi
+
+# Download the compiled binary and its SHA256 checksum from the
+# GitHub Release. The CI pipeline (build.yml) produces one binary per
+# architecture plus a .sha256 file for each.
+BINARY_URL="https://github.com/$REPO/releases/download/$RELEASE_TAG/$ARTIFACT"
+CHECKSUM_URL="https://github.com/$REPO/releases/download/$RELEASE_TAG/$ARTIFACT.sha256"
+
+# Avoid naming this TMPDIR — that shadows the POSIX env variable that
+# mktemp(1) itself consults, which can cause subtle breakage.
+TMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+curl "${CURL_OPTS[@]}" "$BINARY_URL" -o "$TMP_DIR/$ARTIFACT"
+curl "${CURL_OPTS[@]}" "$CHECKSUM_URL" -o "$TMP_DIR/$ARTIFACT.sha256"
+
+# Verify the checksum. `shasum` exits non-zero on mismatch, which
+# `set -e` catches. Run in a subshell so we do not need to cd back.
+if command -v shasum >/dev/null 2>&1; then
+  (cd "$TMP_DIR" && shasum -a 256 -c "$ARTIFACT.sha256" >/dev/null)
+else
+  echo "WARNING: shasum not found; cannot verify binary integrity."
+  echo "Proceed with caution — the download was not verified."
+fi
+
+# Download the example config from the release tag's tree. This
+# file is not architecture-specific, so there is one copy per release.
+curl "${CURL_OPTS[@]}" "https://raw.githubusercontent.com/$REPO/$RELEASE_TAG/config.example.yml" \
   -o "$CONFIG_DIR/config.example.yml"
 
-chmod +x "$PLUGIN_DIR/qmd.30s.ts"
+# Install the binary.
+chmod +x "$TMP_DIR/$ARTIFACT"
+mv "$TMP_DIR/$ARTIFACT" "$PLUGIN_DIR/$BINARY_NAME"
 
 if [ ! -f "$CONFIG_DIR/config.yml" ]; then
   cp "$CONFIG_DIR/config.example.yml" "$CONFIG_DIR/config.yml"
   echo "Default config written to $CONFIG_DIR/config.yml"
 fi
 
-echo "Installed (ref=$REF, sha=${SHA:0:12}). Restart SwiftBar (Cmd-Q in the SwiftBar menu, then relaunch) to load the plugin."
+echo "Installed $BINARY_NAME ($ARTIFACT, tag=$RELEASE_TAG) to $PLUGIN_DIR."
+echo "Restart SwiftBar (Cmd-Q in the SwiftBar menu, then relaunch) to load the plugin."
