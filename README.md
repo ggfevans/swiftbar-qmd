@@ -46,11 +46,46 @@ Search isn't part of the design. That's
 
 ## Install
 
-Three paths, all sharing the same GitHub-hosted `.ts` artifact. Each requires
-[Deno 2.x](https://deno.com/) and [SwiftBar 2.x](https://swiftbar.app/) already
-on your Mac.
+Two install paths: a pre-compiled binary (no Deno required) or the
+source `.ts` file (Deno required). Both require
+[SwiftBar 2.x](https://swiftbar.app/) already on your Mac.
 
-### Manual install
+### Binary install (recommended)
+
+The installer downloads a pre-compiled binary and a thin shell wrapper
+(`qmd.30s.sh`) that serves as the SwiftBar entry point. No Deno runtime
+needed.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ggfevans/qmd-swiftbar/main/install.sh | bash
+```
+
+The installer downloads the compiled binary for your architecture
+(`qmd-swiftbar-arm64` or `qmd-swiftbar-x86_64`), its SHA256 checksum,
+the `qmd.30s.sh` wrapper, and `config.example.yml`. It verifies the
+binary against the checksum before installing. Pass a tag as the first
+argument to pin a specific release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ggfevans/qmd-swiftbar/main/install.sh | bash -s v1.0.0
+```
+
+After install, the plugin directory contains:
+
+```text
+~/Library/Application Support/SwiftBar/Plugins/
+  qmd.30s.sh       SwiftBar entry point (metadata + delegation)
+  qmd-swiftbar      compiled binary (the real plugin)
+```
+
+Restart SwiftBar (Cmd-Q in the SwiftBar menu, then relaunch) to load the
+plugin.
+
+### Source install (requires Deno)
+
+Each of these requires [Deno 2.x](https://deno.com/) already on your Mac.
+
+#### Manual install
 
 ```bash
 mkdir -p ~/Library/Application\ Support/SwiftBar/Plugins
@@ -60,22 +95,7 @@ chmod +x ~/Library/Application\ Support/SwiftBar/Plugins/qmd.30s.ts
 # Restart SwiftBar; the icon appears within 30 seconds.
 ```
 
-### Curl installer
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/ggfevans/qmd-swiftbar/main/install.sh | bash
-```
-
-The installer downloads `qmd.30s.ts` and `config.example.yml`, sets the
-executable bit, and seeds `~/.config/qmd-swiftbar/config.yml` from the example
-if it isn't already present. Pass a tag or branch as the first positional
-argument to pin a specific version:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/ggfevans/qmd-swiftbar/main/install.sh | bash
-```
-
-### SwiftBar "Install from URL"
+#### SwiftBar "Install from URL"
 
 Open SwiftBar → Preferences → Plugins → **Install from URL** and paste:
 
@@ -113,7 +133,7 @@ Full precedence rules and thresholds are in
 
 - macOS (Apple Silicon or Intel)
 - [SwiftBar](https://swiftbar.app/) 2.x
-- [Deno](https://deno.com/) 2.x
+- [Deno](https://deno.com/) 2.x (only for source install; binary install has no Deno dependency)
 - [qmd](https://github.com/tobi/qmd) v2.x configured with at least one
   collection
 
@@ -139,7 +159,8 @@ deno task check   # type-check
 
 ## Troubleshooting
 
-**Icon never appears.** Confirm `qmd.30s.ts` is in
+**Icon never appears.** Confirm `qmd.30s.sh` (binary install) or
+`qmd.30s.ts` (source install) is in
 `~/Library/Application Support/SwiftBar/Plugins/`, is executable
 (`chmod +x`), and that SwiftBar's plugin folder is set to that location.
 Restart SwiftBar (Cmd-Q in the SwiftBar menu, then relaunch). The first poll

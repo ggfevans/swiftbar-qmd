@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -euo pipefail
 
 REPO="ggfevans/qmd-swiftbar"
@@ -8,6 +8,7 @@ TAG="${1:-latest}"
 PLUGIN_DIR="$HOME/Library/Application Support/SwiftBar/Plugins"
 CONFIG_DIR="$HOME/.config/qmd-swiftbar"
 BINARY_NAME="qmd-swiftbar"
+WRAPPER_NAME="qmd.30s.sh"
 
 # SwiftBar can live in /Applications/, ~/Applications/, or any other
 # location LaunchServices knows about (Setapp, manual install). Use
@@ -96,10 +97,18 @@ curl "${CURL_OPTS[@]}" "https://raw.githubusercontent.com/$REPO/$RELEASE_TAG/con
 chmod +x "$TMP_DIR/$ARTIFACT"
 mv "$TMP_DIR/$ARTIFACT" "$PLUGIN_DIR/$BINARY_NAME"
 
+# Download and install the shell wrapper. This is the SwiftBar entry point
+# that delegates to the compiled binary. It is a small text file in the
+# repo, not a release artefact, so download from raw.githubusercontent.com.
+curl "${CURL_OPTS[@]}" "https://raw.githubusercontent.com/$REPO/$RELEASE_TAG/$WRAPPER_NAME" \
+  -o "$PLUGIN_DIR/$WRAPPER_NAME"
+chmod +x "$PLUGIN_DIR/$WRAPPER_NAME"
+
 if [ ! -f "$CONFIG_DIR/config.yml" ]; then
   cp "$CONFIG_DIR/config.example.yml" "$CONFIG_DIR/config.yml"
   echo "Default config written to $CONFIG_DIR/config.yml"
 fi
 
 echo "Installed $BINARY_NAME ($ARTIFACT, tag=$RELEASE_TAG) to $PLUGIN_DIR."
+echo "Installed $WRAPPER_NAME (SwiftBar entry point) to $PLUGIN_DIR."
 echo "Restart SwiftBar (Cmd-Q in the SwiftBar menu, then relaunch) to load the plugin."
