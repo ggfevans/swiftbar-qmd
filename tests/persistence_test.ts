@@ -10,6 +10,7 @@ import type {
 } from "../lib/types.ts";
 import {
   appendFailure,
+  atomicCreateJobPidFile,
   deleteJobPidFile,
   logsDirContents,
   pruneFailuresOlderThan,
@@ -24,28 +25,61 @@ import {
 // ─── Helpers ───────────────────────────────────────────────────
 
 /**
+ * Simple async mutex to serialize access to withCacheDir. Tests can
+ * run in parallel, and mutating the global SWIFTBAR_QMD_CACHE_DIR env
+ * var without locking causes races.
+ */
+class Mutex {
+  private locked = false;
+  private waiting: Array<() => void> = [];
+
+  async acquire(): Promise<void> {
+    while (this.locked) {
+      await new Promise<void>((resolve) => this.waiting.push(resolve));
+    }
+    this.locked = true;
+  }
+
+  release(): void {
+    this.locked = false;
+    const next = this.waiting.shift();
+    if (next) next();
+  }
+}
+
+const cacheDirMutex = new Mutex();
+
+/**
  * Run a test body with a fresh CACHE_DIR override. The env var is set
  * before the body runs and cleared afterwards so subsequent tests see
  * their own per-temp-dir setting (not leaked state).
+ *
+ * Serializes access to the global env var to prevent races when tests
+ * run in parallel.
  */
 async function withCacheDir<T>(
   fn: (dir: string) => Promise<T>,
 ): Promise<T> {
-  const dir = await Deno.makeTempDir({
-    dir: "/tmp",
-    prefix: "swiftbar-qmd-persistence-",
-  });
-  const prev = Deno.env.get("SWIFTBAR_QMD_CACHE_DIR");
-  Deno.env.set("SWIFTBAR_QMD_CACHE_DIR", dir);
+  await cacheDirMutex.acquire();
   try {
-    return await fn(dir);
-  } finally {
-    if (prev === undefined) {
-      Deno.env.delete("SWIFTBAR_QMD_CACHE_DIR");
-    } else {
-      Deno.env.set("SWIFTBAR_QMD_CACHE_DIR", prev);
+    const dir = await Deno.makeTempDir({
+      dir: "/tmp",
+      prefix: "swiftbar-qmd-persistence-",
+    });
+    const prev = Deno.env.get("SWIFTBAR_QMD_CACHE_DIR");
+    Deno.env.set("SWIFTBAR_QMD_CACHE_DIR", dir);
+    try {
+      return await fn(dir);
+    } finally {
+      if (prev === undefined) {
+        Deno.env.delete("SWIFTBAR_QMD_CACHE_DIR");
+      } else {
+        Deno.env.set("SWIFTBAR_QMD_CACHE_DIR", prev);
+      }
+      await Deno.remove(dir, { recursive: true });
     }
-    await Deno.remove(dir, { recursive: true });
+  } finally {
+    cacheDirMutex.release();
   }
 }
 
@@ -211,6 +245,65 @@ Deno.test("writeJobPidFile per-collection uses <action>:<collection>.pid", async
     // deleteJobPidFile with collection arg targets the right file
     await deleteJobPidFile("embed-collection" as ActionId, "gVault");
     assertEquals((await readJobPidFiles()).length, 0);
+  });
+});
+
+Deno.test("atomicCreateJobPidFile: creates file atomically with valid JSON payload, returns true; second call returns false", async () => {
+  await withCacheDir(async (dir) => {
+    // First call: file doesn't exist, O_EXCL create succeeds.
+    const acquired = await atomicCreateJobPidFile(
+      "update-all" as ActionId,
+    );
+    assertEquals(acquired, true);
+
+    // File now exists and contains valid JSON (never empty/malformed).
+    const content = await Deno.readTextFile(
+      join(dir, "jobs", "update-all.pid"),
+    );
+    const parsed = JSON.parse(content);
+    assertEquals(parsed.pid, -1); // Placeholder sentinel.
+    assertEquals(parsed.action, "update-all");
+
+    // Second call: file already exists, returns false.
+    const acquiredAgain = await atomicCreateJobPidFile(
+      "update-all" as ActionId,
+    );
+    assertEquals(acquiredAgain, false);
+  });
+});
+
+Deno.test("writeJobPidFile: recordFailures serialised and read back", async () => {
+  await withCacheDir(async () => {
+    const job: JobInfo = {
+      action: "update-all" as ActionId,
+      pid: 12345,
+      startedAt: new Date("2026-05-17T12:00:00.000Z"),
+      command: ["qmd", "update"],
+      logPath: "/tmp/update-all.log",
+      recordFailures: 2,
+    };
+    await writeJobPidFile("update-all" as ActionId, job);
+
+    const files = await readJobPidFiles();
+    assertEquals(files.length, 1);
+    assertEquals(files[0].recordFailures, 2);
+  });
+});
+
+Deno.test("writeJobPidFile: recordFailures undefined → not in JSON", async () => {
+  await withCacheDir(async () => {
+    const job: JobInfo = {
+      action: "update-all" as ActionId,
+      pid: 12345,
+      startedAt: new Date("2026-05-17T12:00:00.000Z"),
+      command: ["qmd", "update"],
+      logPath: "/tmp/update-all.log",
+    };
+    await writeJobPidFile("update-all" as ActionId, job);
+
+    const files = await readJobPidFiles();
+    assertEquals(files.length, 1);
+    assertEquals(files[0].recordFailures, undefined);
   });
 });
 

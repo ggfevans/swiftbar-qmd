@@ -22,10 +22,10 @@ export type Probes = {
 
 // ─── Production probes ─────────────────────────────────────────
 
-/** `which qmd` succeeds with exit code 0. */
+/** `qmd --version` succeeds with exit code 0. Uses `qmd` directly (already in `--allow-run`) rather than `which`, which would require a separate permission grant. */
 async function probeHasQmdBinary(): Promise<boolean> {
-  const cmd = new Deno.Command("which", {
-    args: ["qmd"],
+  const cmd = new Deno.Command("qmd", {
+    args: ["--version"],
     stdout: "null",
     stderr: "null",
   });

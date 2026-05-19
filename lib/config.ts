@@ -1,6 +1,6 @@
 import { parse as parseYaml, stringify as stringifyYaml } from "@std/yaml";
 import { ensureDir } from "@std/fs";
-import { dirname, fromFileUrl } from "@std/path";
+import { dirname, fromFileUrl, resolve } from "@std/path";
 import type { Config } from "./types.ts";
 
 // ─── Paths ─────────────────────────────────────────────────────
@@ -281,7 +281,32 @@ export function validateConfig(
 
     if ("directory" in l) {
       if (isNonEmptyString(l.directory)) {
-        cfg.logs.directory = expandTilde(l.directory);
+        const expanded = expandTilde(l.directory);
+        // Constrain logs.directory to paths under the cache or config
+        // directories — these are the only paths the Deno allow-write
+        // permission grants. Paths outside these roots would cause
+        // PermissionDenied at runtime and, if interpolated into the bash
+        // -c spawn wrapper, could break shell argument boundaries.
+        //
+        // Normalize/resolve the candidate and all allowed roots to prevent
+        // traversal segments like "../" from bypassing the subtree check.
+        const normalized = resolve(expanded);
+        const allowedRoots = [
+          resolve(expandTilde("~/.cache/swiftbar-qmd")),
+          resolve(expandTilde("~/.config/swiftbar-qmd")),
+        ];
+        const isAllowed = allowedRoots.some(
+          (root) => normalized === root || normalized.startsWith(root + "/"),
+        );
+        if (isAllowed) {
+          cfg.logs.directory = normalized;
+        } else {
+          errors.push(
+            `logs.directory: must be under ${
+              allowedRoots.join(" or ")
+            }; falling back to default`,
+          );
+        }
       } else {
         errors.push(
           "logs.directory: must be a non-empty string; falling back to default",

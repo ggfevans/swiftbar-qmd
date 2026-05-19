@@ -22,6 +22,8 @@ import type { ActionId, JobInfo } from "../lib/types.ts";
 type Recorder = {
   readJobPidFileCalls: Array<{ action: ActionId; collection?: string }>;
   writeJobPidFileCalls: Array<{ action: ActionId; info: JobInfo }>;
+  tryAcquireLockCalls: Array<{ action: ActionId; collection?: string }>;
+  deleteJobPidFileCalls: Array<{ action: ActionId; collection?: string }>;
   spawnDetachedCalls: Array<{ commandString: string; logPath: string }>;
   isProcessAliveCalls: number[];
   touchSentinelCalls: string[];
@@ -35,6 +37,8 @@ function makeRecorder(): Recorder {
   return {
     readJobPidFileCalls: [],
     writeJobPidFileCalls: [],
+    tryAcquireLockCalls: [],
+    deleteJobPidFileCalls: [],
     spawnDetachedCalls: [],
     isProcessAliveCalls: [],
     touchSentinelCalls: [],
@@ -61,6 +65,15 @@ function makeDeps(
     }),
     writeJobPidFile: overrides.writeJobPidFile ?? ((action, info) => {
       rec.writeJobPidFileCalls.push({ action, info });
+      return Promise.resolve();
+    }),
+    // Default: lock acquired (no competing process).
+    tryAcquireLock: overrides.tryAcquireLock ?? ((action, collection) => {
+      rec.tryAcquireLockCalls.push({ action, collection });
+      return Promise.resolve(true);
+    }),
+    deleteJobPidFile: overrides.deleteJobPidFile ?? ((action, collection) => {
+      rec.deleteJobPidFileCalls.push({ action, collection });
       return Promise.resolve();
     }),
     spawnDetached: overrides.spawnDetached ?? ((commandString, logPath) => {
@@ -106,9 +119,10 @@ Deno.test("runAction: update-all maps to 'qmd update'", async () => {
   assertEquals(rec.spawnDetachedCalls.length, 1);
   assertEquals(rec.spawnDetachedCalls[0].commandString, "qmd update");
 
-  // PID file is written with the correct shape.
-  assertEquals(rec.writeJobPidFileCalls.length, 1);
-  const written = rec.writeJobPidFileCalls[0];
+  // PID file is written twice: placeholder (pid=-1) then real PID.
+  assertEquals(rec.writeJobPidFileCalls.length, 2);
+  assertEquals(rec.writeJobPidFileCalls[0].info.pid, -1); // placeholder
+  const written = rec.writeJobPidFileCalls[1];
   assertEquals(written.action, "update-all");
   assertEquals(written.info.action, "update-all");
   assertEquals(written.info.command, ["qmd", "update"]);
@@ -123,7 +137,7 @@ Deno.test("runAction: embed-all maps to 'qmd embed'", async () => {
 
   assertEquals(rec.spawnDetachedCalls.length, 1);
   assertEquals(rec.spawnDetachedCalls[0].commandString, "qmd embed");
-  assertEquals(rec.writeJobPidFileCalls[0].info.command, ["qmd", "embed"]);
+  assertEquals(rec.writeJobPidFileCalls[1].info.command, ["qmd", "embed"]);
 });
 
 Deno.test("runAction: update-collection injects the collection name correctly", async () => {
@@ -141,8 +155,8 @@ Deno.test("runAction: update-collection injects the collection name correctly", 
     "qmd update && qmd embed -c gVault",
   );
 
-  // PID file keys on action + collection.
-  const written = rec.writeJobPidFileCalls[0];
+  // PID file keys on action + collection (second write = real PID).
+  const written = rec.writeJobPidFileCalls[1];
   assertEquals(written.action, "update-collection");
   assertEquals(written.info.collection, "gVault");
   assertEquals(written.info.command, [
@@ -224,75 +238,55 @@ Deno.test("runAction: cleanup maps to 'qmd cleanup'", async () => {
   assertEquals(rec.spawnDetachedCalls[0].commandString, "qmd cleanup");
 });
 
-// ─── Locking tests ─────────────────────────────────────────────
+// ─── Locking tests (D8: atomic O_EXCL) ──────────────────────
 
-Deno.test("runAction: locking — existing alive PID file → no spawn, no write", async () => {
+Deno.test("runAction: lock acquired → spawn proceeds with placeholder PID", async () => {
   const rec = makeRecorder();
-  const existing: JobInfo = {
-    action: "update-all",
-    pid: 1234,
-    startedAt: new Date(),
-    command: ["qmd", "update"],
-    logPath: "/tmp/old.log",
-  };
-  const deps = makeDeps(rec, {
-    readJobPidFile: (action, collection) => {
-      rec.readJobPidFileCalls.push({ action, collection });
-      return Promise.resolve(existing);
-    },
-    isProcessAlive: (pid) => {
-      rec.isProcessAliveCalls.push(pid);
-      return true; // PID is alive → locked
-    },
-  });
+  await runAction("update-all", {}, makeDeps(rec));
 
-  await runAction("update-all", {}, deps);
+  // Lock was attempted.
+  assertEquals(rec.tryAcquireLockCalls.length, 1);
+  assertEquals(rec.tryAcquireLockCalls[0].action, "update-all");
 
-  // We must have checked the lockfile and process alive.
-  assertEquals(rec.readJobPidFileCalls.length, 1);
-  assertEquals(rec.readJobPidFileCalls[0].action, "update-all");
-  assertEquals(rec.isProcessAliveCalls, [1234]);
-
-  // We must NOT have spawned or written a new PID file.
-  assertEquals(rec.spawnDetachedCalls.length, 0);
-  assertEquals(rec.writeJobPidFileCalls.length, 0);
-
-  // The runner exited (silently). The injected `exit` is recorded.
-  assertEquals(rec.exitCalls, [0]);
-});
-
-Deno.test("runAction: locking — existing dead PID file → spawn proceeds", async () => {
-  const rec = makeRecorder();
-  const stale: JobInfo = {
-    action: "update-all",
-    pid: 9999,
-    startedAt: new Date(Date.now() - 86_400_000),
-    command: ["qmd", "update"],
-    logPath: "/tmp/old.log",
-  };
-  const deps = makeDeps(rec, {
-    readJobPidFile: () => Promise.resolve(stale),
-    isProcessAlive: (pid) => {
-      rec.isProcessAliveCalls.push(pid);
-      return false; // dead → not locked
-    },
-  });
-
-  await runAction("update-all", {}, deps);
-
-  // Liveness check happened on the stale PID.
-  assertEquals(rec.isProcessAliveCalls, [9999]);
-
-  // Spawn proceeded — and overwrote the PID file with the new pid.
+  // Spawn proceeded.
   assertEquals(rec.spawnDetachedCalls.length, 1);
-  assertEquals(rec.writeJobPidFileCalls.length, 1);
-  assertEquals(rec.writeJobPidFileCalls[0].info.pid, 42);
+
+  // Two PID file writes: placeholder (pid=-1) then real PID (pid=42).
+  assertEquals(rec.writeJobPidFileCalls.length, 2);
+  assertEquals(rec.writeJobPidFileCalls[0].info.pid, -1);
+  assertEquals(rec.writeJobPidFileCalls[1].info.pid, 42);
+
+  // No PID file deletion on success path.
+  assertEquals(rec.deleteJobPidFileCalls.length, 0);
 
   // No silent exit.
   assertEquals(rec.exitCalls, []);
 });
 
-Deno.test("runAction: locking key uses action:collection for per-collection actions", async () => {
+Deno.test("runAction: lock held → no spawn, no write, silent exit", async () => {
+  const rec = makeRecorder();
+  const deps = makeDeps(rec, {
+    // Lock already held by another process.
+    tryAcquireLock: (action, collection) => {
+      rec.tryAcquireLockCalls.push({ action, collection });
+      return Promise.resolve(false);
+    },
+  });
+
+  await runAction("update-all", {}, deps);
+
+  // Lock was attempted.
+  assertEquals(rec.tryAcquireLockCalls.length, 1);
+
+  // No spawn, no PID file writes.
+  assertEquals(rec.spawnDetachedCalls.length, 0);
+  assertEquals(rec.writeJobPidFileCalls.length, 0);
+
+  // Silent exit.
+  assertEquals(rec.exitCalls, [0]);
+});
+
+Deno.test("runAction: lock key uses action:collection for per-collection actions", async () => {
   const rec = makeRecorder();
   await runAction(
     "embed-collection",
@@ -300,10 +294,104 @@ Deno.test("runAction: locking key uses action:collection for per-collection acti
     makeDeps(rec),
   );
 
-  // The lock-check was scoped to the collection.
-  assertEquals(rec.readJobPidFileCalls.length, 1);
-  assertEquals(rec.readJobPidFileCalls[0].action, "embed-collection");
-  assertEquals(rec.readJobPidFileCalls[0].collection, "gVault");
+  // The lock was scoped to the collection.
+  assertEquals(rec.tryAcquireLockCalls.length, 1);
+  assertEquals(rec.tryAcquireLockCalls[0].action, "embed-collection");
+  assertEquals(rec.tryAcquireLockCalls[0].collection, "gVault");
+});
+
+Deno.test("runAction: spawn failure → lock released (PID file deleted)", async () => {
+  const rec = makeRecorder();
+  const deps = makeDeps(rec, {
+    spawnDetached: () => {
+      rec.spawnDetachedCalls.push({ commandString: "", logPath: "" });
+      return Promise.reject(new Error("spawn failed"));
+    },
+  });
+
+  await runAction("update-all", {}, deps);
+
+  // Lock was acquired.
+  assertEquals(rec.tryAcquireLockCalls.length, 1);
+
+  // Placeholder PID was written.
+  assertEquals(rec.writeJobPidFileCalls.length, 1);
+  assertEquals(rec.writeJobPidFileCalls[0].info.pid, -1);
+
+  // Spawn failed.
+  assertEquals(rec.spawnDetachedCalls.length, 1);
+
+  // Lock was released (PID file deleted).
+  assertEquals(rec.deleteJobPidFileCalls.length, 1);
+  assertEquals(rec.deleteJobPidFileCalls[0].action, "update-all");
+});
+
+Deno.test("runAction: placeholder write failure → lock released, no spawn", async () => {
+  // If writeJobPidFile (placeholder) throws, the runner should release
+  // the lock and abort the spawn — not proceed to spawning a background
+  // process with no PID tracking.
+  const rec = makeRecorder();
+  const deps = makeDeps(rec, {
+    writeJobPidFile: (action, info) => {
+      rec.writeJobPidFileCalls.push({ action, info });
+      return Promise.reject(new Error("disk-full"));
+    },
+  });
+
+  await runAction("update-all", {}, deps);
+
+  // Lock was acquired.
+  assertEquals(rec.tryAcquireLockCalls.length, 1);
+
+  // Placeholder write was attempted (and failed).
+  assertEquals(rec.writeJobPidFileCalls.length, 1);
+
+  // Lock was released (PID file deleted).
+  assertEquals(rec.deleteJobPidFileCalls.length, 1);
+
+  // No spawn attempted.
+  assertEquals(rec.spawnDetachedCalls.length, 0);
+
+  // No exit call — the runner just returns after releasing the lock.
+  assertEquals(rec.exitCalls.length, 0);
+});
+
+Deno.test("runAction: post-spawn writeJobPidFile failure → lock released", async () => {
+  // If the real PID write (after spawn) fails, the runner must release
+  // the lock so the action can be retried. The placeholder PID file
+  // stays on disk (blocking future runs) unless we delete it.
+  const rec = makeRecorder();
+  let callCount = 0;
+  const deps = makeDeps(rec, {
+    writeJobPidFile: (action, info) => {
+      rec.writeJobPidFileCalls.push({ action, info });
+      callCount++;
+      // First call (placeholder with pid=-1) succeeds; second call (real
+      // PID after spawn) fails.
+      if (callCount === 1) {
+        return Promise.resolve();
+      } else {
+        return Promise.reject(new Error("disk-full on real PID write"));
+      }
+    },
+  });
+
+  await runAction("update-all", {}, deps);
+
+  // Lock was acquired.
+  assertEquals(rec.tryAcquireLockCalls.length, 1);
+
+  // Spawn succeeded.
+  assertEquals(rec.spawnDetachedCalls.length, 1);
+
+  // Two writeJobPidFile calls: placeholder + real PID.
+  assertEquals(rec.writeJobPidFileCalls.length, 2);
+
+  // Lock was released (PID file deleted) after the second write failed.
+  assertEquals(rec.deleteJobPidFileCalls.length, 1);
+
+  // No exit call — the runner returns after logging the error.
+  assertEquals(rec.exitCalls.length, 0);
 });
 
 // ─── Recheck (sentinel) ────────────────────────────────────────
@@ -315,7 +403,7 @@ Deno.test("runAction: recheck writes the 'recheck' sentinel and does not spawn",
   assertEquals(rec.touchSentinelCalls, ["recheck"]);
   assertEquals(rec.spawnDetachedCalls.length, 0);
   assertEquals(rec.writeJobPidFileCalls.length, 0);
-  assertEquals(rec.readJobPidFileCalls.length, 0);
+  assertEquals(rec.tryAcquireLockCalls.length, 0);
 });
 
 // ─── Show-context (synchronous) ────────────────────────────────
@@ -340,7 +428,7 @@ Deno.test("runAction: show-context is synchronous (runs qmd, shows dialog, write
   // No PID file, no spawn, no lockfile check.
   assertEquals(rec.spawnDetachedCalls.length, 0);
   assertEquals(rec.writeJobPidFileCalls.length, 0);
-  assertEquals(rec.readJobPidFileCalls.length, 0);
+  assertEquals(rec.tryAcquireLockCalls.length, 0);
 });
 
 // ─── Invalid input handling ────────────────────────────────────
@@ -426,7 +514,7 @@ Deno.test("runAction: force-reembed-collection → confirmDialog cancelled → n
   assertEquals(rec.spawnDetachedCalls.length, 0);
   assertEquals(rec.writeJobPidFileCalls.length, 0);
   // The lock check is gated behind the confirm, so it must not have run.
-  assertEquals(rec.readJobPidFileCalls.length, 0);
+  assertEquals(rec.tryAcquireLockCalls.length, 0);
   // No process exit either — the runner returns silently.
   assertEquals(rec.exitCalls, []);
 });
@@ -451,7 +539,7 @@ Deno.test("runAction: force-reembed-collection → confirmDialog accepted → sp
     rec.spawnDetachedCalls[0].commandString,
     "qmd embed -c gVault -f",
   );
-  assertEquals(rec.writeJobPidFileCalls.length, 1);
+  assertEquals(rec.writeJobPidFileCalls.length, 2);
 });
 
 Deno.test("runAction: cleanup → confirmDialog cancelled → no spawn", async () => {
@@ -476,7 +564,7 @@ Deno.test("runAction: cleanup → confirmDialog cancelled → no spawn", async (
 
   assertEquals(rec.spawnDetachedCalls.length, 0);
   assertEquals(rec.writeJobPidFileCalls.length, 0);
-  assertEquals(rec.readJobPidFileCalls.length, 0);
+  assertEquals(rec.tryAcquireLockCalls.length, 0);
   assertEquals(rec.exitCalls, []);
 });
 
@@ -496,7 +584,7 @@ Deno.test("runAction: cleanup → confirmDialog accepted → spawn proceeds", as
   assertEquals(rec.confirmDialogCalls.length, 1);
   assertEquals(rec.spawnDetachedCalls.length, 1);
   assertEquals(rec.spawnDetachedCalls[0].commandString, "qmd cleanup");
-  assertEquals(rec.writeJobPidFileCalls.length, 1);
+  assertEquals(rec.writeJobPidFileCalls.length, 2);
 });
 
 Deno.test("runAction: non-destructive actions do not invoke confirmDialog", async () => {

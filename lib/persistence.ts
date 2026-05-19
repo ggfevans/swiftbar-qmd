@@ -42,7 +42,12 @@ function snapshotPath(): string {
 }
 
 function snapshotTmpPath(): string {
-  return join(cacheDir(), "last-poll.json.tmp");
+  // Include PID to avoid overlapping writes from concurrent poll processes.
+  // SwiftBar invokes the plugin on a 30-second cadence, but if a poll
+  // takes longer than the interval, two processes could write simultaneously
+  // and clobber each other's temp file. The PID suffix makes each writer
+  // unique so they don't collide.
+  return join(cacheDir(), `last-poll.json.tmp.${Deno.pid}`);
 }
 
 function jobsDir(): string {
@@ -425,6 +430,9 @@ export async function readJobPidFiles(): Promise<JobInfo[]> {
       startedAt: new Date(raw.startedAt),
       command: (raw.command as unknown[]).map((s) => String(s)),
       logPath: raw.logPath,
+      recordFailures: typeof raw.recordFailures === "number"
+        ? raw.recordFailures
+        : undefined,
     });
   }
 
@@ -482,6 +490,9 @@ export async function readJobPidFile(
     startedAt: new Date(raw.startedAt),
     command: (raw.command as unknown[]).map((s) => String(s)),
     logPath: raw.logPath,
+    recordFailures: typeof raw.recordFailures === "number"
+      ? raw.recordFailures
+      : undefined,
   };
 }
 
@@ -489,13 +500,16 @@ export async function readJobPidFile(
  * Write a pid file for an in-flight job. Per SPEC §15.3, `collection`
  * is serialised as `null` (not omitted) when absent. The filename is
  * `<action>.pid` or `<action>:<collection>.pid`.
+ *
+ * `recordFailures` is serialised when present so the poll cycle can
+ * track consecutive `appendFailure` retries (SPEC §13.5, D9).
  */
 export async function writeJobPidFile(
   action: ActionId,
   info: JobInfo,
 ): Promise<void> {
   await ensureJobsDir();
-  const payload = {
+  const payload: Record<string, unknown> = {
     action,
     collection: info.collection ?? null,
     pid: info.pid,
@@ -503,8 +517,62 @@ export async function writeJobPidFile(
     command: info.command,
     logPath: info.logPath,
   };
+  if (info.recordFailures !== undefined) {
+    payload.recordFailures = info.recordFailures;
+  }
   const path = join(jobsDir(), jobFileName(action, info.collection));
   await Deno.writeTextFile(path, JSON.stringify(payload, null, 2));
+}
+
+/**
+ * Atomically create a lock file for a job using O_EXCL semantics
+ * (`Deno.open` with `createNew: true`). Returns `true` if the file was
+ * created (lock acquired), `false` if it already exists (lock held).
+ * Used by the action runner to prevent TOCTOU races (SPEC §13.3, D8).
+ *
+ * The file is written with a minimal valid JSON payload (pid: -1
+ * sentinel) so that it is always parseable by `readJobPidFile`. This
+ * prevents a crash between lock creation and placeholder write from
+ * leaving an empty/malformed file that would block future runs.
+ */
+export async function atomicCreateJobPidFile(
+  action: ActionId,
+  collection?: string,
+): Promise<boolean> {
+  await ensureJobsDir();
+  const path = join(jobsDir(), jobFileName(action, collection));
+  try {
+    const file = await Deno.open(path, { createNew: true, write: true });
+    // Write a minimal valid JSON payload so the file is never empty.
+    // pid: -1 signals "spawn in progress" to concurrent readers. The
+    // real placeholder (with startedAt, command, logPath) overwrites this
+    // immediately after lock acquisition in runAction.
+    const payload = JSON.stringify({
+      action,
+      collection: collection ?? null,
+      pid: -1,
+      startedAt: new Date().toISOString(),
+      command: [],
+      logPath: "",
+    });
+    try {
+      await file.write(new TextEncoder().encode(payload));
+    } catch (writeErr) {
+      // Write failed — remove the half-written file so the lock is released.
+      try {
+        await Deno.remove(path);
+      } catch {
+        // Best-effort cleanup; ignore removal errors.
+      }
+      throw writeErr;
+    } finally {
+      file.close();
+    }
+    return true;
+  } catch (err) {
+    if (err instanceof Deno.errors.AlreadyExists) return false;
+    throw err;
+  }
 }
 
 /**

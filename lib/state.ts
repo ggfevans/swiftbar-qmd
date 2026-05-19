@@ -17,6 +17,7 @@ import {
   logsDirContents as productionLogsDirContents,
   readJobPidFiles as productionReadJobPidFiles,
   readRecentFailures as productionReadRecentFailures,
+  writeJobPidFile as productionWriteJobPidFile,
 } from "./persistence.ts";
 import { isProcessAlive as productionIsProcessAlive } from "./actions.ts";
 import { logError } from "./log.ts";
@@ -58,6 +59,7 @@ export type StateSources = {
   isProcessAlive: (pid: number) => boolean;
   readExitCodeFromLog: (logPath: string) => Promise<number>;
   appendFailure: (failure: FailureRecord) => Promise<void>;
+  writeJobPidFile: (action: ActionId, info: JobInfo) => Promise<void>;
   deleteJobPidFile: (action: ActionId, collection?: string) => Promise<void>;
 };
 
@@ -65,6 +67,15 @@ export type StateSources = {
 
 const SDK_TIMEOUT_MS = 2_000;
 const DAEMON_TIMEOUT_MS = 5_000;
+
+/**
+ * Maximum consecutive `appendFailure` retries before the PID file is
+ * deleted as a zombie. The poll cycle increments `recordFailures` each
+ * time writing the failure record to disk fails; after this many
+ * attempts, the PID file is cleaned up to avoid indefinite retention.
+ * See SPEC §13.5, D9.
+ */
+const MAX_FAILURE_RETRIES = 3;
 
 // ─── Production: SDK readers ───────────────────────────────────
 
@@ -352,6 +363,7 @@ const PRODUCTION_SOURCES: StateSources = {
   isProcessAlive: productionIsProcessAlive,
   readExitCodeFromLog: productionReadExitCodeFromLog,
   appendFailure: productionAppendFailure,
+  writeJobPidFile: productionWriteJobPidFile,
   deleteJobPidFile: productionDeleteJobPidFile,
 };
 
@@ -386,6 +398,8 @@ export async function readCurrentState(
     readExitCodeFromLog: sources.readExitCodeFromLog ??
       PRODUCTION_SOURCES.readExitCodeFromLog,
     appendFailure: sources.appendFailure ?? PRODUCTION_SOURCES.appendFailure,
+    writeJobPidFile: sources.writeJobPidFile ??
+      PRODUCTION_SOURCES.writeJobPidFile,
     deleteJobPidFile: sources.deleteJobPidFile ??
       PRODUCTION_SOURCES.deleteJobPidFile,
   };
@@ -493,9 +507,22 @@ export async function readCurrentState(
   // poll is written to disk but absent from `state.recentFailures`,
   // and `diffStates` then treats it as a clean `job-complete` instead
   // of a failure. See PR #1 finding A2.
+  //
+  // D9: when `appendFailure` throws (disk-full, permission flip, EIO),
+  // the PID file is NOT deleted. Instead, `recordFailures` is
+  // incremented and the PID file is rewritten. This preserves the
+  // signal for the next poll cycle to retry. After MAX_FAILURE_RETRIES
+  // consecutive failures, the PID file is deleted as a zombie cleanup
+  // measure. See SPEC §13.5, D9.
   const newlyRecordedFailures: FailureRecord[] = [];
   const inFlightJobs: JobInfo[] = [];
   for (const job of rawJobs) {
+    // PID -1 is a placeholder from the atomic lock (D8). The spawn
+    // is still in progress — treat as alive so the next poll rechecks.
+    if (job.pid === -1) {
+      inFlightJobs.push(job);
+      continue;
+    }
     let alive = false;
     try {
       alive = s.isProcessAlive(job.pid);
@@ -513,7 +540,7 @@ export async function readCurrentState(
       inFlightJobs.push(job);
       continue;
     }
-    // Dead: read exit code, record failure if non-zero, delete PID.
+    // Dead: read exit code, record failure if non-zero.
     let exitCode = -1;
     try {
       exitCode = await s.readExitCodeFromLog(job.logPath);
@@ -525,6 +552,13 @@ export async function readCurrentState(
       );
       exitCode = -1;
     }
+
+    // Whether to delete the PID file at the end of this iteration.
+    // Starts true (the default: clean up after successful processing).
+    // Set to false when `appendFailure` throws and we want to keep
+    // the PID file for a retry on the next poll cycle.
+    let deletePid = true;
+
     if (exitCode !== 0) {
       const record: FailureRecord = {
         action: job.action,
@@ -535,12 +569,12 @@ export async function readCurrentState(
       };
       try {
         await s.appendFailure(record);
-        // Track the in-memory record so the returned CurrentState
-        // reflects what we just wrote to disk. Only push on the happy
-        // path — if persistence failed we can't promise the caller a
-        // durable record. The next poll will re-discover and retry.
         newlyRecordedFailures.push(record);
       } catch (err) {
+        // Even though persistence failed, we know the job exited non-zero.
+        // Push the in-memory record so diffStates sees a failure event
+        // rather than treating this as a clean job-complete transition.
+        newlyRecordedFailures.push(record);
         await logError(
           "state",
           `appendFailure failed for ${job.action}${
@@ -548,18 +582,57 @@ export async function readCurrentState(
           }`,
           err instanceof Error ? err : new Error(String(err)),
         );
+        // Keep the PID file so the next poll can retry. Increment
+        // the retry counter and rewrite the PID file. After
+        // MAX_FAILURE_RETRIES, give up and delete anyway (zombie
+        // cleanup).
+        const retries = (job.recordFailures ?? 0) + 1;
+        if (retries >= MAX_FAILURE_RETRIES) {
+          await logError(
+            "state",
+            `${job.action}${
+              job.collection ? `:${job.collection}` : ""
+            }: exceeded max failure retries (${MAX_FAILURE_RETRIES}); deleting PID file`,
+          );
+          // Fall through to deletePid = true.
+        } else {
+          deletePid = false;
+          try {
+            await s.writeJobPidFile(job.action, {
+              ...job,
+              recordFailures: retries,
+            });
+          } catch (writeErr) {
+            // Rewrite failed — the retry counter can't be persisted. If we
+            // leave the file, the next poll reads recordFailures=undefined
+            // and retries forever. Fall through to zombie cleanup instead.
+            await logError(
+              "state",
+              `writeJobPidFile (recordFailures retry) failed for ${job.action}${
+                job.collection ? `:${job.collection}` : ""
+              }; deleting PID file to prevent infinite retry`,
+              writeErr instanceof Error
+                ? writeErr
+                : new Error(String(writeErr)),
+            );
+            deletePid = true;
+          }
+        }
       }
     }
-    try {
-      await s.deleteJobPidFile(job.action, job.collection);
-    } catch (err) {
-      await logError(
-        "state",
-        `deleteJobPidFile failed for ${job.action}${
-          job.collection ? `:${job.collection}` : ""
-        }`,
-        err instanceof Error ? err : new Error(String(err)),
-      );
+
+    if (deletePid) {
+      try {
+        await s.deleteJobPidFile(job.action, job.collection);
+      } catch (err) {
+        await logError(
+          "state",
+          `deleteJobPidFile failed for ${job.action}${
+            job.collection ? `:${job.collection}` : ""
+          }`,
+          err instanceof Error ? err : new Error(String(err)),
+        );
+      }
     }
   }
 

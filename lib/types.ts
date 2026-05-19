@@ -94,6 +94,14 @@ export interface JobInfo {
   startedAt: Date;
   command: string[];
   logPath: string;
+  /**
+   * Consecutive `appendFailure` retries on this job. Incremented when
+   * the poll cycle detects a dead job but can't persist the failure
+   * record (e.g. disk-full). The PID file is kept as a retry signal
+   * until the record is written or the counter exceeds
+   * MAX_FAILURE_RETRIES. See SPEC §13.5.
+   */
+  recordFailures?: number;
 }
 
 export interface FailureRecord {

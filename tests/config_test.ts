@@ -227,3 +227,53 @@ Deno.test("EXAMPLE_CONFIG_PATH: returns a decoded POSIX path (no percent escapes
   const stat = Deno.statSync(EXAMPLE_CONFIG_PATH);
   assertEquals(stat.isFile, true);
 });
+
+// ─── logs.directory validation (security: constrain to allowed roots) ──
+
+Deno.test("validateConfig: logs.directory under cache root is accepted", () => {
+  const home = Deno.env.get("HOME") ?? "/tmp/testhome";
+  const raw = {
+    logs: { directory: `${home}/.cache/swiftbar-qmd/logs` },
+  };
+  const { config, errors } = validateConfig(raw);
+  assertEquals(errors, []);
+  assertEquals(
+    config.logs.directory,
+    `${home}/.cache/swiftbar-qmd/logs`,
+  );
+});
+
+Deno.test("validateConfig: logs.directory under config root is accepted", () => {
+  const home = Deno.env.get("HOME") ?? "/tmp/testhome";
+  const raw = {
+    logs: { directory: `${home}/.config/swiftbar-qmd/logs` },
+  };
+  const { config, errors } = validateConfig(raw);
+  assertEquals(errors, []);
+  assertEquals(
+    config.logs.directory,
+    `${home}/.config/swiftbar-qmd/logs`,
+  );
+});
+
+Deno.test("validateConfig: logs.directory outside allowed roots falls back to default", () => {
+  const raw = {
+    logs: { directory: "/tmp/outside-allowed-path" },
+  };
+  const { config, errors } = validateConfig(raw);
+  // Falls back to the default (~/.cache/swiftbar-qmd/logs).
+  assertEquals(config.logs.directory, DEFAULT_CONFIG.logs.directory);
+  assertEquals(errors.length > 0, true);
+  const joined = errors.join("\n");
+  assertStringIncludes(joined, "logs.directory");
+});
+
+Deno.test("validateConfig: logs.directory with tilde under cache root is accepted", () => {
+  const raw = {
+    logs: { directory: "~/.cache/swiftbar-qmd/logs" },
+  };
+  const { config, errors } = validateConfig(raw);
+  assertEquals(errors, []);
+  const home = Deno.env.get("HOME") ?? "/tmp/testhome";
+  assertEquals(config.logs.directory, `${home}/.cache/swiftbar-qmd/logs`);
+});

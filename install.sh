@@ -32,18 +32,15 @@ mkdir -p "$PLUGIN_DIR" "$CONFIG_DIR"
 SHA="$REF"
 if command -v git >/dev/null 2>&1; then
   # `git ls-remote` prints "<sha>\t<full-ref>" for each match. We
-  # interrogate refs/heads/<REF> and refs/tags/<REF>^{} (peeled tag
-  # for annotated-tag SHAs). Prefer peeled tag (^{}) first, then
-  # unpeeled tag, then branch.
+  # interrogate refs/heads/<REF>, refs/tags/<REF>^{} (peeled tag for
+  # annotated-tag commit SHAs), and refs/tags/<REF> (the tag object).
+  # The peeled ref (^{}) is listed first so annotated tags resolve to
+  # the commit SHA, not the tag object SHA — GitHub raw URLs need a
+  # commit-ish, and the tag object SHA would cause a 404.
   RESOLVED=$(
     git ls-remote "https://github.com/$REPO" \
-      "refs/heads/$REF" "refs/tags/$REF" "refs/tags/$REF^{}" 2>/dev/null |
-      awk '
-        /\^\{\}$/ { sha = $1; exit }
-        /refs\/tags\// && !sha { sha = $1 }
-        /refs\/heads\// && !sha { sha = $1 }
-        END { print sha }
-      ' || true
+      "refs/heads/$REF" "refs/tags/$REF^{}" "refs/tags/$REF" 2>/dev/null |
+      awk '{print $1; exit}' || true
   )
   if [ -n "${RESOLVED:-}" ]; then
     SHA="$RESOLVED"
