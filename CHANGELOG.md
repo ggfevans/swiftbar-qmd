@@ -6,8 +6,8 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 Implements the full v1 specification documented in
-[`docs/planning/SPEC.md`](docs/planning/SPEC.md). Will be tagged as v1.0.0
-when ready for release.
+[`docs/planning/SPEC.md`](docs/planning/SPEC.md). Will be tagged as v1.0.0 when
+ready for release.
 
 ### Added
 

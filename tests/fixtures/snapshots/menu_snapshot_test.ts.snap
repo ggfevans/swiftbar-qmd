@@ -74,7 +74,7 @@ Global actions | size=10 color=#8a8a8e shell=
 ⧉ Copy MCP endpoint URL | bash="bash" param1="-c" param2="echo -n 'http://localhost:8181' | pbcopy" terminal=false
 ›_ Show qmd status in Terminal | bash="qmd" param1="status" terminal=true
 ---
-⚙ Preferences… | bash="open" param1="-t" param2=\$HOME/.config/qmd-swiftbar/config.yml terminal=false shortcut=CmdOrCtrl+Comma
+⚙ Preferences… | bash="open" param1="-t" param2="<CONFIG_PATH>" terminal=false shortcut=CmdOrCtrl+Comma
 ⓘ About qmd-swiftbar | bash="open" param1="https://github.com/ggfevans/qmd-swiftbar" terminal=false
 
 `;
@@ -153,7 +153,7 @@ Global actions | size=10 color=#8a8a8e shell=
 ⧉ Copy MCP endpoint URL | bash="bash" param1="-c" param2="echo -n 'http://localhost:8181' | pbcopy" terminal=false
 ›_ Show qmd status in Terminal | bash="qmd" param1="status" terminal=true
 ---
-⚙ Preferences… | bash="open" param1="-t" param2=\$HOME/.config/qmd-swiftbar/config.yml terminal=false shortcut=CmdOrCtrl+Comma
+⚙ Preferences… | bash="open" param1="-t" param2="<CONFIG_PATH>" terminal=false shortcut=CmdOrCtrl+Comma
 ⓘ About qmd-swiftbar | bash="open" param1="https://github.com/ggfevans/qmd-swiftbar" terminal=false
 
 `;
@@ -232,7 +232,7 @@ Global actions | size=10 color=#8a8a8e shell=
 ⧉ Copy MCP endpoint URL | bash="bash" param1="-c" param2="echo -n 'http://localhost:8181' | pbcopy" terminal=false
 ›_ Show qmd status in Terminal | bash="qmd" param1="status" terminal=true
 ---
-⚙ Preferences… | bash="open" param1="-t" param2=\$HOME/.config/qmd-swiftbar/config.yml terminal=false shortcut=CmdOrCtrl+Comma
+⚙ Preferences… | bash="open" param1="-t" param2="<CONFIG_PATH>" terminal=false shortcut=CmdOrCtrl+Comma
 ⓘ About qmd-swiftbar | bash="open" param1="https://github.com/ggfevans/qmd-swiftbar" terminal=false
 
 `;
@@ -312,7 +312,7 @@ Running: update… (1m) | bash="<PLUGIN_PATH>" param1="--action" param2="update-
 ⧉ Copy MCP endpoint URL | bash="bash" param1="-c" param2="echo -n 'http://localhost:8181' | pbcopy" terminal=false
 ›_ Show qmd status in Terminal | bash="qmd" param1="status" terminal=true
 ---
-⚙ Preferences… | bash="open" param1="-t" param2=\$HOME/.config/qmd-swiftbar/config.yml terminal=false shortcut=CmdOrCtrl+Comma
+⚙ Preferences… | bash="open" param1="-t" param2="<CONFIG_PATH>" terminal=false shortcut=CmdOrCtrl+Comma
 ⓘ About qmd-swiftbar | bash="open" param1="https://github.com/ggfevans/qmd-swiftbar" terminal=false
 
 `;
@@ -324,7 +324,7 @@ qmd not detected | size=10 color=#8a8a8e shell=
    Install qmd from github.com/tobi/qmd | bash="open" param1="https://github.com/tobi/qmd#installation" terminal=false
    Re-check now | bash="<PLUGIN_PATH>" param1="--action" param2="recheck" terminal=false refresh=true
 ---
-   Preferences… | bash="open" param1="-t" param2=\$HOME/.config/qmd-swiftbar/config.yml terminal=false
+   Preferences… | bash="open" param1="-t" param2="<CONFIG_PATH>" terminal=false
    About qmd-swiftbar | bash="open" param1="https://github.com/ggfevans/qmd-swiftbar" terminal=false
 
 `;
@@ -338,7 +338,7 @@ No collections configured | size=10 color=#8a8a8e shell=
    Run 'qmd collection add' in a terminal to start. | size=11 color=#6e6e72 shell=
    Re-check now | bash="<PLUGIN_PATH>" param1="--action" param2="recheck" terminal=false refresh=true
 ---
-   Preferences… | bash="open" param1="-t" param2=\$HOME/.config/qmd-swiftbar/config.yml terminal=false
+   Preferences… | bash="open" param1="-t" param2="<CONFIG_PATH>" terminal=false
    About qmd-swiftbar | bash="open" param1="https://github.com/ggfevans/qmd-swiftbar" terminal=false
 
 `;
@@ -351,7 +351,7 @@ Index has no documents | size=10 color=#412402 shell=
 ---
 ↻ Run update | bash="<PLUGIN_PATH>" param1="--action" param2="update-all" terminal=false refresh=true
 ---
-   Preferences… | bash="open" param1="-t" param2=\$HOME/.config/qmd-swiftbar/config.yml terminal=false
+   Preferences… | bash="open" param1="-t" param2="<CONFIG_PATH>" terminal=false
    About qmd-swiftbar | bash="open" param1="https://github.com/ggfevans/qmd-swiftbar" terminal=false
 
 `;
@@ -379,7 +379,7 @@ Global actions | size=10 color=#8a8a8e shell=
 ›_ Show qmd status in Terminal | bash="qmd" param1="status" terminal=true
 ⚠ Show last error | bash="open" param1="-t" param2="<CACHE_DIR>/error.log" terminal=false
 ---
-⚙ Preferences… | bash="open" param1="-t" param2=\$HOME/.config/qmd-swiftbar/config.yml terminal=false shortcut=CmdOrCtrl+Comma
+⚙ Preferences… | bash="open" param1="-t" param2="<CONFIG_PATH>" terminal=false shortcut=CmdOrCtrl+Comma
 ⓘ About qmd-swiftbar | bash="open" param1="https://github.com/ggfevans/qmd-swiftbar" terminal=false
 
 `;
@@ -461,7 +461,7 @@ Global actions | size=10 color=#8a8a8e shell=
 ›_ Show qmd status in Terminal | bash="qmd" param1="status" terminal=true
 ⚠ Show last error | bash="open" param1="-t" param2="<CACHE_DIR>/error.log" terminal=false
 ---
-⚙ Preferences… | bash="open" param1="-t" param2=\$HOME/.config/qmd-swiftbar/config.yml terminal=false shortcut=CmdOrCtrl+Comma
+⚙ Preferences… | bash="open" param1="-t" param2="<CONFIG_PATH>" terminal=false shortcut=CmdOrCtrl+Comma
 ⓘ About qmd-swiftbar | bash="open" param1="https://github.com/ggfevans/qmd-swiftbar" terminal=false
 
 `;
@@ -541,7 +541,7 @@ Global actions | size=10 color=#8a8a8e shell=
 ⧉ Copy MCP endpoint URL | bash="bash" param1="-c" param2="echo -n 'http://localhost:8181' | pbcopy" terminal=false
 ›_ Show qmd status in Terminal | bash="qmd" param1="status" terminal=true
 ---
-⚙ Preferences… | bash="open" param1="-t" param2=\$HOME/.config/qmd-swiftbar/config.yml terminal=false shortcut=CmdOrCtrl+Comma
+⚙ Preferences… | bash="open" param1="-t" param2="<CONFIG_PATH>" terminal=false shortcut=CmdOrCtrl+Comma
 ⓘ About qmd-swiftbar | bash="open" param1="https://github.com/ggfevans/qmd-swiftbar" terminal=false
 
 `;

@@ -573,7 +573,9 @@ export async function runAction(
   } catch (err) {
     await logInfo(
       "actions",
-      `${id}${collection ? `:${collection}` : ""}: lock acquisition failed; skipping spawn: ${err}`,
+      `${id}${
+        collection ? `:${collection}` : ""
+      }: lock acquisition failed; skipping spawn: ${err}`,
     );
     return;
   }

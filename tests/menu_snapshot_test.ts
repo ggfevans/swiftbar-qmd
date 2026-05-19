@@ -21,6 +21,7 @@ import { createAssertSnapshot } from "@std/testing/snapshot";
 import { getPluginPath, renderFirstRunMenu, renderMenu } from "../lib/menu.ts";
 import { computeTierWithReason } from "../lib/rollup.ts";
 import { cacheDir } from "../lib/persistence.ts";
+import { CONFIG_PATH } from "../lib/config.ts";
 import {
   buildConfig,
   buildDriftingState,
@@ -46,7 +47,8 @@ function normalizePaths(out: string): string {
   const errorLogPath = `${cacheDir()}/error.log`;
   return out
     .replaceAll(pluginPath, "<PLUGIN_PATH>")
-    .replaceAll(errorLogPath, "<CACHE_DIR>/error.log");
+    .replaceAll(errorLogPath, "<CACHE_DIR>/error.log")
+    .replaceAll(CONFIG_PATH, "<CONFIG_PATH>");
 }
 
 const assertSnapshot = createAssertSnapshot<string>({
