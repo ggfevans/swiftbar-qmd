@@ -1,11 +1,13 @@
 name: build
 
 # Compiles the qmd-swiftbar plugin into a self-contained Deno binary.
-# Runs on every push to main (build-only), on tag push (build + release),
+# Runs on every push to main (compile-only), on tag push (compile + release),
 # and on PRs (dry-run compile to catch build regressions before merge).
 #
-# Lint, format, type-check, and test are handled by ci.yml. This workflow
-# only concerns the compile step.
+# On tag push, also creates a GitHub Release with changelog notes and
+# attaches the compiled binaries. Lint, format, type-check, and test
+# are handled by ci.yml. This workflow only concerns the compile and
+# release steps.
 
 on:
   push:
@@ -90,7 +92,7 @@ jobs:
           retention-days: 30
 
   release:
-    name: attach to release
+    name: create release
     needs: compile
     # Only publish when a version tag is pushed, not on branch pushes or
     # PRs.
@@ -101,6 +103,34 @@ jobs:
       contents: write
 
     steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Validate tag format
+        id: version
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if ! echo "$TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::Tag '$TAG' does not match SemVer format (vX.Y.Z or vX.Y.Z-prerelease)"
+            exit 1
+          fi
+          echo "VERSION=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Extract changelog entry
+        id: changelog
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          sed -n "/^## \[$VERSION\]/,/^## \[/p" CHANGELOG.md | head -n -1 > release_notes.md
+          echo "Extracted release notes for v$VERSION"
+
+      - name: Verify release notes exist
+        run: |
+          if [ ! -s release_notes.md ]; then
+            echo "::error::No changelog entry found for v${{ steps.version.outputs.VERSION }}. Ensure CHANGELOG.md has a '## [X.Y.Z]' header matching this version."
+            exit 1
+          fi
+
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
         with:
           path: release-assets
@@ -111,5 +141,9 @@ jobs:
 
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2.6.2
         with:
+          body_path: release_notes.md
           files: release-assets/*
-          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.VERSION, '-') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
