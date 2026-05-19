@@ -30,7 +30,7 @@ curl -fsSL https://raw.githubusercontent.com/ggfevans/qmd-swiftbar/main/install.
 Pin to a specific release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ggfevans/qmd-swiftbar/main/install.sh | bash -s v1.0.0
+curl -fsSL https://raw.githubusercontent.com/ggfevans/qmd-swiftbar/main/install.sh | bash -s -- v1.0.0
 ```
 
 After install, restart SwiftBar (Cmd-Q in the SwiftBar menu, then relaunch).
