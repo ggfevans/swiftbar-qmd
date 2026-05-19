@@ -1,76 +1,41 @@
 # qmd-swiftbar
 
-> Real-time operational visibility for [qmd](https://github.com/tobi/qmd) in
-> your macOS menubar.
+[![CI][ci-badge]][ci] [![Security][sec-badge]][sec] [![Release][rel-badge]][rel] [![License][lic-badge]][lic] [![Deno][deno-badge]][deno]
 
-A [SwiftBar](https://github.com/swiftbar/SwiftBar) plugin that puts
-[qmd](https://github.com/tobi/qmd) state in your macOS menubar: collection
-health, MCP daemon status, embedding coverage, and one-click maintenance.
+A [SwiftBar](https://github.com/swiftbar/SwiftBar) plugin that surfaces [qmd](https://github.com/tobi/qmd) state in your macOS menubar: collection health, daemon status, and one-click maintenance actions.
 
-![qmd-swiftbar menubar mockup](docs/mockup.svg)
-
-## What it does
-
-qmd-swiftbar surfaces operational visibility into a running qmd installation
-through the macOS menubar. It answers two questions on an ongoing basis: *what
-is qmd doing right now*, and *what state are my collections in*. It also
-provides one-click access to common maintenance actions (`qmd update`,
-`qmd embed`, MCP daemon control) so those operations do not require switching
-to the terminal.
-
-The plugin is ADHD-first in design: a single at-a-glance visual signal (the
-menubar icon's colour) answers "do I need to click?" without opening the menu,
-the dropdown is organised by signal type for fast scanning, and notifications
-are reserved for failures so the tool does not accumulate notification debt.
-
-It is explicitly **not** a search interface. Searching is qmd's CLI / MCP /
-SDK job, and a separate TUI ([lazyqmd](https://github.com/AlexZeitler/lazyqmd))
-already covers that surface. qmd-swiftbar is an operational dashboard.
-
-## Why this exists
-
-[qmd](https://github.com/tobi/qmd) is a fast, local-first search engine for
-markdown notes and knowledge bases. It ships a CLI, an MCP server, and an SDK,
-all excellent. What it doesn't ship is any menubar surface, so the only ways to
-check whether your index is healthy, whether collections are fresh, or whether
-the daemon is running are `qmd status` in a terminal or hitting `/health` by
-hand.
-
-qmd-swiftbar fills that gap. A coloured icon (green, amber, red, or hollow grey)
-summarises index health at a glance. The dropdown lists every collection with
-freshness and coverage. Update, embed, and daemon controls are one click away,
-so routine maintenance stops requiring a terminal.
-
-Search isn't part of the design. That's
-[lazyqmd](https://github.com/AlexZeitler/lazyqmd)'s job.
+[ci-badge]: https://img.shields.io/github/actions/workflow/status/ggfevans/qmd-swiftbar/build.yml?branch=main&label=build
+[ci]: https://github.com/ggfevans/qmd-swiftbar/actions/workflows/build.yml
+[sec-badge]: https://img.shields.io/github/actions/workflow/status/ggfevans/qmd-swiftbar/trivy.yml?branch=main&label=security
+[sec]: https://github.com/ggfevans/qmd-swiftbar/actions/workflows/trivy.yml
+[rel-badge]: https://img.shields.io/github/v/release/ggfevans/qmd-swiftbar?label=latest
+[rel]: https://github.com/ggfevans/qmd-swiftbar/releases
+[lic-badge]: https://img.shields.io/github/license/ggfevans/qmd-swiftbar
+[lic]: https://github.com/ggfevans/qmd-swiftbar/blob/main/LICENSE
+[deno-badge]: https://img.shields.io/badge/deno-2.x-blue?logo=deno
+[deno]: https://deno.com/
 
 ## Install
 
-Two install paths: a pre-compiled binary (no Deno required) or the
-source `.ts` file (Deno required). Both require
-[SwiftBar 2.x](https://swiftbar.app/) already on your Mac.
+Requires macOS (Apple Silicon or Intel) and [SwiftBar 2.x](https://swiftbar.app/). A running [qmd](https://github.com/tobi/qmd) installation is needed for the plugin to report status.
 
 ### Binary install (recommended)
 
-The installer downloads a pre-compiled binary and a thin shell wrapper
-(`qmd.30s.sh`) that serves as the SwiftBar entry point. No Deno runtime
-needed.
+No Deno runtime required. The installer downloads the compiled binary for your architecture, verifies its SHA256 checksum, and installs the `qmd.30s.sh` wrapper (also checksum-verified) as the SwiftBar entry point.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ggfevans/qmd-swiftbar/main/install.sh | bash
 ```
 
-The installer downloads the compiled binary for your architecture
-(`qmd-swiftbar-arm64` or `qmd-swiftbar-x86_64`), its SHA256 checksum,
-the `qmd.30s.sh` wrapper, and `config.example.yml`. It verifies the
-binary against the checksum before installing. Pass a tag as the first
-argument to pin a specific release:
+Pin to a specific release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ggfevans/qmd-swiftbar/main/install.sh | bash -s v1.0.0
+curl -fsSL https://raw.githubusercontent.com/ggfevans/qmd-swiftbar/main/install.sh | bash -s -- v1.0.0
 ```
 
-After install, the plugin directory contains:
+After install, restart SwiftBar (Cmd-Q in the SwiftBar menu, then relaunch).
+
+Installed files:
 
 ```text
 ~/Library/Application Support/SwiftBar/Plugins/
@@ -78,135 +43,49 @@ After install, the plugin directory contains:
   qmd-swiftbar      compiled binary (the real plugin)
 ```
 
-Restart SwiftBar (Cmd-Q in the SwiftBar menu, then relaunch) to load the
-plugin.
-
-### Source install (requires Deno)
-
-Each of these requires [Deno 2.x](https://deno.com/) already on your Mac.
-
-#### Manual install
+### Source install (requires Deno 2.x)
 
 ```bash
 mkdir -p ~/Library/Application\ Support/SwiftBar/Plugins
 curl -L https://raw.githubusercontent.com/ggfevans/qmd-swiftbar/main/qmd.30s.ts \
   -o ~/Library/Application\ Support/SwiftBar/Plugins/qmd.30s.ts
 chmod +x ~/Library/Application\ Support/SwiftBar/Plugins/qmd.30s.ts
-# Restart SwiftBar; the icon appears within 30 seconds.
 ```
 
-#### SwiftBar "Install from URL"
-
-Open SwiftBar → Preferences → Plugins → **Install from URL** and paste:
+Or use SwiftBar Preferences, Plugins, **Install from URL**:
 
 ```text
 https://raw.githubusercontent.com/ggfevans/qmd-swiftbar/main/qmd.30s.ts
 ```
 
-SwiftBar handles download and placement. You still need Deno on your `$PATH`.
+Both require [Deno 2.x](https://deno.com/) on `$PATH`.
 
 ## Configure
 
-Configuration lives at `~/.config/qmd-swiftbar/config.yml`. Clicking the
-**Preferences…** entry in the dropdown opens it in your default editor
-(`$EDITOR`, falling back to `open -t`). Changes are picked up on the next
-30-second poll; no SwiftBar restart needed.
+Configuration lives at `~/.config/qmd-swiftbar/config.yml`. Click **Preferences...** in the dropdown to open it in your editor. Changes take effect on the next 30-second poll. See [`config.example.yml`](config.example.yml) for all options.
 
-See [`docs/planning/SPEC.md` §7.2](docs/planning/SPEC.md#72-schema) for the full
-schema (rollup thresholds, notification toggles, UI options, log retention) and
-[`config.example.yml`](config.example.yml) for an annotated example with all
-defaults.
+## Icon colours
 
-## What the icon colours mean
-
-| Icon  | Tier  | Meaning                                                                            |
-| ----- | ----- | ---------------------------------------------------------------------------------- |
-| Green | Green | All collections fresh and reachable, daemon running, no recent failures.           |
-| Amber | Amber | In-flight job, coverage drifting, freshness expiring, or recent op failure.        |
-| Red   | Red   | Daemon stopped, collection unreachable, coverage broken, or fresh recent failure.  |
-| Grey  | Grey  | No collections configured / first-run state. The plugin is healthy; qmd is empty. |
-
-Full precedence rules and thresholds are in
-[`docs/planning/SPEC.md` §9.1](docs/planning/SPEC.md#91-precedence).
-
-## Requirements
-
-- macOS (Apple Silicon or Intel)
-- [SwiftBar](https://swiftbar.app/) 2.x
-- [Deno](https://deno.com/) 2.x (only for source install; binary install has no Deno dependency)
-- [qmd](https://github.com/tobi/qmd) v2.x configured with at least one
-  collection
-
-## Development
-
-Local checks:
-
-```bash
-deno task test    # full test suite (203+ tests)
-deno task fmt     # format
-deno task lint    # lint
-deno task check   # type-check
-```
-
-- Project layout and module contracts are in
-  [`docs/planning/SPEC.md` §5](docs/planning/SPEC.md#5-repository-layout-and-module-contracts).
-- Architectural decisions are in
-  [`docs/planning/DECISIONS.md`](docs/planning/DECISIONS.md).
-- The 17-step implementation plan is in
-  [`docs/planning/PROMPTS.md`](docs/planning/PROMPTS.md).
-- Conventions for AI agents working on this repo are in
-  [`AGENTS.md`](AGENTS.md).
+| Icon  | Meaning                                                                      |
+| ----- | ---------------------------------------------------------------------------- |
+| Green | All collections fresh, daemon running, no recent failures.                    |
+| Amber | In-flight job, coverage drifting, freshness expiring, or recent op failure.  |
+| Red   | Daemon stopped, collection unreachable, coverage broken, or fresh failure.   |
+| Grey  | No collections configured. The plugin is healthy; qmd is empty.              |
 
 ## Troubleshooting
 
-**Icon never appears.** Confirm `qmd.30s.sh` (binary install) or
-`qmd.30s.ts` (source install) is in
-`~/Library/Application Support/SwiftBar/Plugins/`, is executable
-(`chmod +x`), and that SwiftBar's plugin folder is set to that location.
-Restart SwiftBar (Cmd-Q in the SwiftBar menu, then relaunch). The first poll
-takes up to 30 seconds.
+**Icon never appears.** Confirm `qmd.30s.sh` (binary install) or `qmd.30s.ts` (source install) is in `~/Library/Application Support/SwiftBar/Plugins/`, is executable (`chmod +x`), and that SwiftBar's plugin folder points there. Restart SwiftBar.
 
-**Icon stays grey.** The plugin reports no collections (usually because
-`qmd` is missing from `$PATH` or `~/.cache/qmd/index.sqlite` doesn't exist yet).
-Run `qmd update` against at least one collection to populate the index, then
-wait for the next poll.
+**Icon stays grey.** Run `qmd update` against at least one collection, then wait for the next poll.
 
-**Notifications not appearing.** Open System Settings → Notifications and
-confirm **SwiftBar** is allowed to deliver notifications. Failure-class
-notifications are on by default; success and threshold-breach notifications
-are opt-in (see [`config.example.yml`](config.example.yml)).
-
-## Status
-
-The v1.0.0 spec is locked and implementation is complete; see
-[`CHANGELOG.md`](CHANGELOG.md) for what shipped.
+**Notifications not appearing.** Open System Settings, Notifications, and confirm SwiftBar is allowed to deliver notifications. Failure notifications are on by default; success and threshold notifications are opt-in (see `config.example.yml`).
 
 ## AI disclosure
 
-This project is **ai-generated**: the spec, planning docs, and code are drafted
-by [Claude](https://claude.com) (Anthropic's AI assistant, currently Claude
-Sonnet 4.6 and Opus 4.6) and reviewed by Gareth Evans before they land in the
-repo. Gareth is accountable for what ships. Conventions for AI agents working
-on this repo are documented in [`AGENTS.md`](AGENTS.md).
+This project is **ai-generated**: the spec, planning docs, and code are drafted by [Claude](https://claude.com) (Anthropic's AI assistant, currently Claude Sonnet 4.6 and Opus 4.6) and reviewed by Gareth Evans before they land in the repo. Gareth is accountable for what ships. Conventions for AI agents working on this repo are documented in [`AGENTS.md`](AGENTS.md).
 
-The "ai-generated" label follows the disclosure spectrum proposed by
-[dweekly/ai-content-disclosure](https://github.com/dweekly/ai-content-disclosure)
-and the OCaml community's
-[voluntary AI disclosure proposal](https://anil.recoil.org/notes/opam-ai-disclosure):
-`none` / `ai-assisted` / `ai-generated` / `autonomous` / `mixed`. AI-assisted
-commits carry an `Assisted-by:` trailer.
-
-## For implementers
-
-- [`docs/planning/SPEC.md`](docs/planning/SPEC.md), the canonical v1
-  specification.
-- [`docs/planning/DECISIONS.md`](docs/planning/DECISIONS.md), rationale for the
-  16 architectural choices.
-- [`docs/planning/RESEARCH.md`](docs/planning/RESEARCH.md), background research
-  that informed the design.
-- [`docs/planning/PROMPTS.md`](docs/planning/PROMPTS.md), 17-step implementation
-  plan with code-gen prompts.
-- [`todo.md`](todo.md), the working checklist.
+The "ai-generated" label follows the disclosure spectrum proposed by [dweekly/ai-content-disclosure](https://github.com/dweekly/ai-content-disclosure) and the OCaml community's [voluntary AI disclosure proposal](https://anil.recoil.org/notes/opam-ai-disclosure): `none` / `ai-assisted` / `ai-generated` / `autonomous` / `mixed`. AI-assisted commits carry an `Assisted-by:` trailer.
 
 ## License
 
