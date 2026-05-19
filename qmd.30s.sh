@@ -27,7 +27,7 @@ BINARY_NAME="qmd-swiftbar"
 if [ -x "$PLUGIN_DIR/$BINARY_NAME" ]; then
   BINARY="$PLUGIN_DIR/$BINARY_NAME"
 elif BINARY="$(command -v "$BINARY_NAME" 2>/dev/null)"; then
-  : # command -v already set BINARY
+  true # command -v already set BINARY
 else
   BINARY=""
 fi

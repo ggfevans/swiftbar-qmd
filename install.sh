@@ -98,11 +98,24 @@ chmod +x "$TMP_DIR/$ARTIFACT"
 mv "$TMP_DIR/$ARTIFACT" "$PLUGIN_DIR/$BINARY_NAME"
 
 # Download and install the shell wrapper. This is the SwiftBar entry point
-# that delegates to the compiled binary. It is a small text file in the
-# repo, not a release artefact, so download from raw.githubusercontent.com.
-curl "${CURL_OPTS[@]}" "https://raw.githubusercontent.com/$REPO/$RELEASE_TAG/$WRAPPER_NAME" \
-  -o "$PLUGIN_DIR/$WRAPPER_NAME"
-chmod +x "$PLUGIN_DIR/$WRAPPER_NAME"
+# that delegates to the compiled binary. It is published as a release
+# artefact alongside the binary so its integrity can be verified.
+WRAPPER_URL="https://github.com/$REPO/releases/download/$RELEASE_TAG/$WRAPPER_NAME"
+WRAPPER_CHECKSUM_URL="https://github.com/$REPO/releases/download/$RELEASE_TAG/$WRAPPER_NAME.sha256"
+
+curl "${CURL_OPTS[@]}" "$WRAPPER_URL" -o "$TMP_DIR/$WRAPPER_NAME"
+curl "${CURL_OPTS[@]}" "$WRAPPER_CHECKSUM_URL" -o "$TMP_DIR/$WRAPPER_NAME.sha256"
+
+# Verify the wrapper checksum (same pattern as the binary above).
+if command -v shasum >/dev/null 2>&1; then
+  (cd "$TMP_DIR" && shasum -a 256 -c "$WRAPPER_NAME.sha256" >/dev/null)
+else
+  echo "WARNING: shasum not found; cannot verify wrapper integrity."
+  echo "Proceed with caution — the download was not verified."
+fi
+
+chmod +x "$TMP_DIR/$WRAPPER_NAME"
+mv "$TMP_DIR/$WRAPPER_NAME" "$PLUGIN_DIR/$WRAPPER_NAME"
 
 if [ ! -f "$CONFIG_DIR/config.yml" ]; then
   cp "$CONFIG_DIR/config.example.yml" "$CONFIG_DIR/config.yml"
