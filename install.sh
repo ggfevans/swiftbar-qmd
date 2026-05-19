@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -euo pipefail
 
 REPO="ggfevans/qmd-swiftbar"
@@ -8,6 +8,7 @@ TAG="${1:-latest}"
 PLUGIN_DIR="$HOME/Library/Application Support/SwiftBar/Plugins"
 CONFIG_DIR="$HOME/.config/qmd-swiftbar"
 BINARY_NAME="qmd-swiftbar"
+WRAPPER_NAME="qmd.30s.sh"
 
 # SwiftBar can live in /Applications/, ~/Applications/, or any other
 # location LaunchServices knows about (Setapp, manual install). Use
@@ -96,10 +97,31 @@ curl "${CURL_OPTS[@]}" "https://raw.githubusercontent.com/$REPO/$RELEASE_TAG/con
 chmod +x "$TMP_DIR/$ARTIFACT"
 mv "$TMP_DIR/$ARTIFACT" "$PLUGIN_DIR/$BINARY_NAME"
 
+# Download and install the shell wrapper. This is the SwiftBar entry point
+# that delegates to the compiled binary. It is published as a release
+# artefact alongside the binary so its integrity can be verified.
+WRAPPER_URL="https://github.com/$REPO/releases/download/$RELEASE_TAG/$WRAPPER_NAME"
+WRAPPER_CHECKSUM_URL="https://github.com/$REPO/releases/download/$RELEASE_TAG/$WRAPPER_NAME.sha256"
+
+curl "${CURL_OPTS[@]}" "$WRAPPER_URL" -o "$TMP_DIR/$WRAPPER_NAME"
+curl "${CURL_OPTS[@]}" "$WRAPPER_CHECKSUM_URL" -o "$TMP_DIR/$WRAPPER_NAME.sha256"
+
+# Verify the wrapper checksum (same pattern as the binary above).
+if command -v shasum >/dev/null 2>&1; then
+  (cd "$TMP_DIR" && shasum -a 256 -c "$WRAPPER_NAME.sha256" >/dev/null)
+else
+  echo "WARNING: shasum not found; cannot verify wrapper integrity."
+  echo "Proceed with caution — the download was not verified."
+fi
+
+chmod +x "$TMP_DIR/$WRAPPER_NAME"
+mv "$TMP_DIR/$WRAPPER_NAME" "$PLUGIN_DIR/$WRAPPER_NAME"
+
 if [ ! -f "$CONFIG_DIR/config.yml" ]; then
   cp "$CONFIG_DIR/config.example.yml" "$CONFIG_DIR/config.yml"
   echo "Default config written to $CONFIG_DIR/config.yml"
 fi
 
 echo "Installed $BINARY_NAME ($ARTIFACT, tag=$RELEASE_TAG) to $PLUGIN_DIR."
+echo "Installed $WRAPPER_NAME (SwiftBar entry point) to $PLUGIN_DIR."
 echo "Restart SwiftBar (Cmd-Q in the SwiftBar menu, then relaunch) to load the plugin."
