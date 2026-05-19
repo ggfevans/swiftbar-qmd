@@ -1,0 +1,115 @@
+name: build
+
+# Compiles the qmd-swiftbar plugin into a self-contained Deno binary.
+# Runs on every push to main (build-only), on tag push (build + release),
+# and on PRs (dry-run compile to catch build regressions before merge).
+#
+# Lint, format, type-check, and test are handled by ci.yml. This workflow
+# only concerns the compile step.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+jobs:
+  compile:
+    name: compile (${{ matrix.target }})
+    runs-on: macos-14
+
+    permissions:
+      contents: read
+
+    strategy:
+      # Build every platform even if one fails, so the other artefact is
+      # still available for download.
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            artifact: qmd-swiftbar-arm64
+          - target: x86_64-apple-darwin
+            artifact: qmd-swiftbar-x86_64
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - uses: denoland/setup-deno@667a34cdef165d8d2b2e98dde39547c9daac7282  # v2.0.4
+        with:
+          deno-version: v2.x
+
+      # The shebang version scopes --allow-read/--allow-write to $HOME
+      # subpaths, but $HOME resolves at *compile* time for a compiled
+      # binary, not at runtime.  A compiled binary shipped to arbitrary
+      # machines cannot know the user's home directory in advance, so we
+      # use blanket read/write permissions instead.  The user already
+      # trusts the binary by choosing to download and run it; this is
+      # equivalent to any other native macOS executable.
+      - name: Compile binary
+        run: |
+          # Keep --allow-run list in sync with qmd.30s.ts shebang.
+          set -x
+          deno compile \
+            --allow-net=localhost:8181 \
+            --allow-read \
+            --allow-write \
+            --allow-run=qmd,open,osascript,kill,bash \
+            --allow-env=HOME,PATH,EDITOR,QMD_SWIFTBAR_CACHE_DIR \
+            --target ${{ matrix.target }} \
+            --output ${{ matrix.artifact }} \
+            qmd.30s.ts
+
+      - name: Generate SHA256 checksum
+        run: |
+          shasum -a 256 ${{ matrix.artifact }} > ${{ matrix.artifact }}.sha256
+          echo "::group::Checksum"
+          cat ${{ matrix.artifact }}.sha256
+          echo "::endgroup::"
+
+      - name: Verify binary
+        run: |
+          # Deno compiled binaries pass all flags to the script, so we
+          # cannot use --version.  Instead, confirm the file is a valid
+          # Mach-O executable and has non-trivial size.
+          file ${{ matrix.artifact }}
+          test -x ${{ matrix.artifact }}
+          size=$(stat -f%z ${{ matrix.artifact }})
+          echo "Binary size: ${size} bytes"
+          # Typical Deno compiled binary is 30-50 MB; flag anything under 1 MB
+          # as likely truncated or corrupt.
+          test "$size" -gt 1000000
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}
+            ${{ matrix.artifact }}.sha256
+          retention-days: 30
+
+  release:
+    name: attach to release
+    needs: compile
+    # Only publish when a version tag is pushed, not on branch pushes or
+    # PRs.
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: macos-14
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: List release assets
+        run: ls -lh release-assets/
+
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2.6.2
+        with:
+          files: release-assets/*
+          generate_release_notes: true
