@@ -20,7 +20,7 @@ import type { StateSources } from "../lib/state.ts";
 function makeConfig(): Config {
   return {
     qmd: {
-      index_path: "/tmp/swiftbar-qmd-state-test/index.sqlite",
+      index_path: "/tmp/qmd-swiftbar-state-test/index.sqlite",
       daemon_url: "http://localhost:8181",
     },
     rollup: {
@@ -40,7 +40,7 @@ function makeConfig(): Config {
       hide_obsidian_when_absent: true,
     },
     logs: {
-      directory: "/tmp/swiftbar-qmd-state-test/logs",
+      directory: "/tmp/qmd-swiftbar-state-test/logs",
       retain_per_action: 10,
     },
   };

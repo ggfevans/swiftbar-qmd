@@ -15,18 +15,18 @@ import { logError } from "./log.ts";
 // ─── Paths ─────────────────────────────────────────────────────
 
 /**
- * Cache directory root for swiftbar-qmd state. Defaults to
- * `~/.cache/swiftbar-qmd`. Tests can override by setting
- * `SWIFTBAR_QMD_CACHE_DIR` before invoking persistence functions.
+ * Cache directory root for qmd-swiftbar state. Defaults to
+ * `~/.cache/qmd-swiftbar`. Tests can override by setting
+ * `QMD_SWIFTBAR_CACHE_DIR` before invoking persistence functions.
  *
  * The env var is read on every call (not at module load) so tests
  * can mutate the environment without re-importing the module.
  */
 export function cacheDir(): string {
-  const override = Deno.env.get("SWIFTBAR_QMD_CACHE_DIR");
+  const override = Deno.env.get("QMD_SWIFTBAR_CACHE_DIR");
   if (override && override.length > 0) return override;
   const home = Deno.env.get("HOME") ?? "";
-  return `${home}/.cache/swiftbar-qmd`;
+  return `${home}/.cache/qmd-swiftbar`;
 }
 
 /**

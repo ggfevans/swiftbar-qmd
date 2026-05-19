@@ -1,6 +1,6 @@
 # Planning docs
 
-Design and decision artifacts for swiftbar-qmd. The implementation lives at the repo root; everything in this folder explains *why* and *what should be built*.
+Design and decision artifacts for qmd-swiftbar. The implementation lives at the repo root; everything in this folder explains *why* and *what should be built*.
 
 | Document | Purpose | Audience |
 |----------|---------|----------|

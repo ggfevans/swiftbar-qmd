@@ -1,4 +1,4 @@
-# swiftbar-qmd config — values shown are defaults
+# qmd-swiftbar config — values shown are defaults
 # Tuning these adjusts what triggers yellow/red on the menubar icon.
 
 qmd:
@@ -34,6 +34,6 @@ ui:
 
 logs:
   # Where action stdout/stderr is captured
-  directory: ~/.cache/swiftbar-qmd/logs
+  directory: ~/.cache/qmd-swiftbar/logs
   # Max log files to retain per action type before rotation
   retain_per_action: 10

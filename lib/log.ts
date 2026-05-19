@@ -10,10 +10,10 @@
  * See PR #1 finding A6.
  */
 function cacheDir(): string {
-  const override = Deno.env.get("SWIFTBAR_QMD_CACHE_DIR");
+  const override = Deno.env.get("QMD_SWIFTBAR_CACHE_DIR");
   if (override && override.length > 0) return override;
   const home = Deno.env.get("HOME") ?? "";
-  return `${home}/.cache/swiftbar-qmd`;
+  return `${home}/.cache/qmd-swiftbar`;
 }
 
 function logPath(): string {

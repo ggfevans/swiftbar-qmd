@@ -269,7 +269,7 @@ export function buildConfirmDialogScript(
 ): string {
   const safeMessage = escapeForAppleScript(message);
   const safeProceed = escapeForAppleScript(proceedLabel);
-  return `display dialog "${safeMessage}" with title "swiftbar-qmd" ` +
+  return `display dialog "${safeMessage}" with title "qmd-swiftbar" ` +
     `buttons {"Cancel", "${safeProceed}"} default button "Cancel" ` +
     `with icon caution giving up after 60`;
 }
@@ -573,7 +573,9 @@ export async function runAction(
   } catch (err) {
     await logInfo(
       "actions",
-      `${id}${collection ? `:${collection}` : ""}: lock acquisition failed; skipping spawn: ${err}`,
+      `${id}${
+        collection ? `:${collection}` : ""
+      }: lock acquisition failed; skipping spawn: ${err}`,
     );
     return;
   }

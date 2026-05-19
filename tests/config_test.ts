@@ -14,7 +14,7 @@ async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
   // Force base under /tmp so the test suite stays within --allow-write=/tmp.
   const dir = await Deno.makeTempDir({
     dir: "/tmp",
-    prefix: "swiftbar-qmd-test-",
+    prefix: "qmd-swiftbar-test-",
   });
   try {
     return await fn(dir);
@@ -233,26 +233,26 @@ Deno.test("EXAMPLE_CONFIG_PATH: returns a decoded POSIX path (no percent escapes
 Deno.test("validateConfig: logs.directory under cache root is accepted", () => {
   const home = Deno.env.get("HOME") ?? "/tmp/testhome";
   const raw = {
-    logs: { directory: `${home}/.cache/swiftbar-qmd/logs` },
+    logs: { directory: `${home}/.cache/qmd-swiftbar/logs` },
   };
   const { config, errors } = validateConfig(raw);
   assertEquals(errors, []);
   assertEquals(
     config.logs.directory,
-    `${home}/.cache/swiftbar-qmd/logs`,
+    `${home}/.cache/qmd-swiftbar/logs`,
   );
 });
 
 Deno.test("validateConfig: logs.directory under config root is accepted", () => {
   const home = Deno.env.get("HOME") ?? "/tmp/testhome";
   const raw = {
-    logs: { directory: `${home}/.config/swiftbar-qmd/logs` },
+    logs: { directory: `${home}/.config/qmd-swiftbar/logs` },
   };
   const { config, errors } = validateConfig(raw);
   assertEquals(errors, []);
   assertEquals(
     config.logs.directory,
-    `${home}/.config/swiftbar-qmd/logs`,
+    `${home}/.config/qmd-swiftbar/logs`,
   );
 });
 
@@ -261,7 +261,7 @@ Deno.test("validateConfig: logs.directory outside allowed roots falls back to de
     logs: { directory: "/tmp/outside-allowed-path" },
   };
   const { config, errors } = validateConfig(raw);
-  // Falls back to the default (~/.cache/swiftbar-qmd/logs).
+  // Falls back to the default (~/.cache/qmd-swiftbar/logs).
   assertEquals(config.logs.directory, DEFAULT_CONFIG.logs.directory);
   assertEquals(errors.length > 0, true);
   const joined = errors.join("\n");
@@ -270,10 +270,10 @@ Deno.test("validateConfig: logs.directory outside allowed roots falls back to de
 
 Deno.test("validateConfig: logs.directory with tilde under cache root is accepted", () => {
   const raw = {
-    logs: { directory: "~/.cache/swiftbar-qmd/logs" },
+    logs: { directory: "~/.cache/qmd-swiftbar/logs" },
   };
   const { config, errors } = validateConfig(raw);
   assertEquals(errors, []);
   const home = Deno.env.get("HOME") ?? "/tmp/testhome";
-  assertEquals(config.logs.directory, `${home}/.cache/swiftbar-qmd/logs`);
+  assertEquals(config.logs.directory, `${home}/.cache/qmd-swiftbar/logs`);
 });

@@ -1,12 +1,12 @@
-#!/usr/bin/env -S deno run --allow-net=localhost:8181 --allow-read=$HOME/.cache/qmd,$HOME/.config/swiftbar-qmd,$HOME/.cache/swiftbar-qmd --allow-write=$HOME/.cache/swiftbar-qmd,$HOME/.config/swiftbar-qmd --allow-run=qmd,open,osascript,kill,bash --allow-env=HOME,PATH,EDITOR,SWIFTBAR_QMD_CACHE_DIR
+#!/usr/bin/env -S deno run --allow-net=localhost:8181 --allow-read=$HOME/.cache/qmd,$HOME/.config/qmd-swiftbar,$HOME/.cache/qmd-swiftbar --allow-write=$HOME/.cache/qmd-swiftbar,$HOME/.config/qmd-swiftbar --allow-run=qmd,open,osascript,kill,bash --allow-env=HOME,PATH,EDITOR,QMD_SWIFTBAR_CACHE_DIR
 
-// <swiftbar.title>swiftbar-qmd</swiftbar.title>
+// <swiftbar.title>qmd-swiftbar</swiftbar.title>
 // <swiftbar.version>v1.0.0</swiftbar.version>
 // <swiftbar.author>Gareth Evans</swiftbar.author>
 // <swiftbar.author.github>ggfevans</swiftbar.author.github>
 // <swiftbar.desc>Surface qmd operational state (collections, daemon, jobs) in the macOS menubar.</swiftbar.desc>
 // <swiftbar.dependencies>deno,qmd</swiftbar.dependencies>
-// <swiftbar.abouturl>https://github.com/ggfevans/swiftbar-qmd</swiftbar.abouturl>
+// <swiftbar.abouturl>https://github.com/ggfevans/qmd-swiftbar</swiftbar.abouturl>
 
 import { join } from "@std/path";
 import { runAction } from "./lib/actions.ts";

@@ -26,7 +26,7 @@ import {
 
 /**
  * Simple async mutex to serialize access to withCacheDir. Tests can
- * run in parallel, and mutating the global SWIFTBAR_QMD_CACHE_DIR env
+ * run in parallel, and mutating the global QMD_SWIFTBAR_CACHE_DIR env
  * var without locking causes races.
  */
 class Mutex {
@@ -64,17 +64,17 @@ async function withCacheDir<T>(
   try {
     const dir = await Deno.makeTempDir({
       dir: "/tmp",
-      prefix: "swiftbar-qmd-persistence-",
+      prefix: "qmd-swiftbar-persistence-",
     });
-    const prev = Deno.env.get("SWIFTBAR_QMD_CACHE_DIR");
-    Deno.env.set("SWIFTBAR_QMD_CACHE_DIR", dir);
+    const prev = Deno.env.get("QMD_SWIFTBAR_CACHE_DIR");
+    Deno.env.set("QMD_SWIFTBAR_CACHE_DIR", dir);
     try {
       return await fn(dir);
     } finally {
       if (prev === undefined) {
-        Deno.env.delete("SWIFTBAR_QMD_CACHE_DIR");
+        Deno.env.delete("QMD_SWIFTBAR_CACHE_DIR");
       } else {
-        Deno.env.set("SWIFTBAR_QMD_CACHE_DIR", prev);
+        Deno.env.set("QMD_SWIFTBAR_CACHE_DIR", prev);
       }
       await Deno.remove(dir, { recursive: true });
     }

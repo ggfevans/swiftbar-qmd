@@ -19,7 +19,7 @@ import type {
 function makeConfig(): Config {
   return {
     qmd: {
-      index_path: "/tmp/swiftbar-qmd-menu-test/index.sqlite",
+      index_path: "/tmp/qmd-swiftbar-menu-test/index.sqlite",
       daemon_url: "http://localhost:8181",
     },
     rollup: {
@@ -39,7 +39,7 @@ function makeConfig(): Config {
       hide_obsidian_when_absent: true,
     },
     logs: {
-      directory: "/tmp/swiftbar-qmd-menu-test/logs",
+      directory: "/tmp/qmd-swiftbar-menu-test/logs",
       retain_per_action: 10,
     },
   };
@@ -103,7 +103,7 @@ Deno.test("renderMenu: no recentLogs → no 'Show last output' row", () => {
 Deno.test("renderMenu: one recentLog → 'Show last output' row points at its path", () => {
   const log: LogFileInfo = {
     action: "update-all",
-    path: "/tmp/swiftbar-qmd-menu-test/logs/update-all-20260517T120000.log",
+    path: "/tmp/qmd-swiftbar-menu-test/logs/update-all-20260517T120000.log",
     createdAt: new Date("2026-05-17T12:00:00.000Z"),
     sizeBytes: 256,
   };

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="ggfevans/swiftbar-qmd"
+REPO="ggfevans/qmd-swiftbar"
 # Default to the latest tagged release so curl-pipe-bash installs are
 # reproducible. Pass any ref (tag, branch, SHA) as the first arg to
 # override — e.g. `bash -s main` to track tip-of-tree.
-REF="${1:-v1.0.0}"
+REF="${1:-main}"
 PLUGIN_DIR="$HOME/Library/Application Support/SwiftBar/Plugins"
-CONFIG_DIR="$HOME/.config/swiftbar-qmd"
+CONFIG_DIR="$HOME/.config/qmd-swiftbar"
 
 # Preflight
 command -v deno >/dev/null || { echo "ERROR: deno not found. Install from https://deno.com/"; exit 1; }
@@ -26,7 +26,7 @@ mkdir -p "$PLUGIN_DIR" "$CONFIG_DIR"
 # Resolve the ref to a SHA once so the two-file download is atomic.
 # Without this, the ref ($REF) could move (e.g. a push to `main`)
 # between the two curls, producing a mixed install. Tags are normally
-# immutable so this is a no-op for the default v1.0.0 install — but
+# immutable so this is a no-op for the default main install — but
 # the cost is one HTTPS call and the guarantee is worth it. Falls
 # back to the ref directly if `git ls-remote` isn't available (rare).
 SHA="$REF"

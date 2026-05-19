@@ -1,6 +1,6 @@
 # Tests
 
-Deno tests for swiftbar-qmd. Layout mirrors `lib/`: each `lib/<x>.ts` has a
+Deno tests for qmd-swiftbar. Layout mirrors `lib/`: each `lib/<x>.ts` has a
 paired `tests/<x>_test.ts`.
 
 ## Running
@@ -53,7 +53,7 @@ would otherwise float between runs. `tests/menu_snapshot_test.ts` normalizes
 these through `createAssertSnapshot`'s `serializer` option:
 
 - `Deno.mainModule` → `<PLUGIN_PATH>`
-- `$HOME/.cache/swiftbar-qmd/error.log` → `<CACHE_DIR>/error.log`
+- `$HOME/.cache/qmd-swiftbar/error.log` → `<CACHE_DIR>/error.log`
 
 All timestamps in fixtures are anchored to `FIXED_POLLED_AT`
 (`2026-05-17T12:00:00.000Z`), so `compactDuration` / `relativeTime` produce
