@@ -5,7 +5,7 @@
 // <swiftbar.author>Gareth Evans</swiftbar.author>
 // <swiftbar.author.github>ggfevans</swiftbar.author.github>
 // <swiftbar.desc>Surface qmd operational state (collections, daemon, jobs) in the macOS menubar.</swiftbar.desc>
-// <swiftbar.dependencies>deno,qmd</swiftbar.dependencies>
+// <swiftbar.dependencies>qmd</swiftbar.dependencies>
 // <swiftbar.abouturl>https://github.com/ggfevans/qmd-swiftbar</swiftbar.abouturl>
 
 import { join } from "@std/path";
