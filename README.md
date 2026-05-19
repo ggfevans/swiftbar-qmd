@@ -1,4 +1,4 @@
-# swiftbar-qmd
+# qmd-swiftbar
 
 > Real-time operational visibility for [qmd](https://github.com/tobi/qmd) in
 > your macOS menubar.
@@ -7,11 +7,11 @@ A [SwiftBar](https://github.com/swiftbar/SwiftBar) plugin that puts
 [qmd](https://github.com/tobi/qmd) state in your macOS menubar: collection
 health, MCP daemon status, embedding coverage, and one-click maintenance.
 
-![swiftbar-qmd menubar mockup](docs/mockup.svg)
+![qmd-swiftbar menubar mockup](docs/mockup.svg)
 
 ## What it does
 
-swiftbar-qmd surfaces operational visibility into a running qmd installation
+qmd-swiftbar surfaces operational visibility into a running qmd installation
 through the macOS menubar. It answers two questions on an ongoing basis: *what
 is qmd doing right now*, and *what state are my collections in*. It also
 provides one-click access to common maintenance actions (`qmd update`,
@@ -25,7 +25,7 @@ are reserved for failures so the tool does not accumulate notification debt.
 
 It is explicitly **not** a search interface. Searching is qmd's CLI / MCP /
 SDK job, and a separate TUI ([lazyqmd](https://github.com/AlexZeitler/lazyqmd))
-already covers that surface. swiftbar-qmd is an operational dashboard.
+already covers that surface. qmd-swiftbar is an operational dashboard.
 
 ## Why this exists
 
@@ -36,7 +36,7 @@ check whether your index is healthy, whether collections are fresh, or whether
 the daemon is running are `qmd status` in a terminal or hitting `/health` by
 hand.
 
-swiftbar-qmd fills that gap. A coloured icon (green, amber, red, or hollow grey)
+qmd-swiftbar fills that gap. A coloured icon (green, amber, red, or hollow grey)
 summarises index health at a glance. The dropdown lists every collection with
 freshness and coverage. Update, embed, and daemon controls are one click away,
 so routine maintenance stops requiring a terminal.
@@ -54,7 +54,7 @@ on your Mac.
 
 ```bash
 mkdir -p ~/Library/Application\ Support/SwiftBar/Plugins
-curl -L https://raw.githubusercontent.com/ggfevans/swiftbar-qmd/v1.0.0/qmd.30s.ts \
+curl -L https://raw.githubusercontent.com/ggfevans/qmd-swiftbar/v1.0.0/qmd.30s.ts \
   -o ~/Library/Application\ Support/SwiftBar/Plugins/qmd.30s.ts
 chmod +x ~/Library/Application\ Support/SwiftBar/Plugins/qmd.30s.ts
 # Restart SwiftBar; the icon appears within 30 seconds.
@@ -63,16 +63,16 @@ chmod +x ~/Library/Application\ Support/SwiftBar/Plugins/qmd.30s.ts
 ### Curl installer
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ggfevans/swiftbar-qmd/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ggfevans/qmd-swiftbar/main/install.sh | bash
 ```
 
 The installer downloads `qmd.30s.ts` and `config.example.yml`, sets the
-executable bit, and seeds `~/.config/swiftbar-qmd/config.yml` from the example
+executable bit, and seeds `~/.config/qmd-swiftbar/config.yml` from the example
 if it isn't already present. Pass a tag or branch as the first positional
 argument to pin a specific version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ggfevans/swiftbar-qmd/main/install.sh | bash -s v1.0.0
+curl -fsSL https://raw.githubusercontent.com/ggfevans/qmd-swiftbar/main/install.sh | bash -s v1.0.0
 ```
 
 ### SwiftBar "Install from URL"
@@ -80,14 +80,14 @@ curl -fsSL https://raw.githubusercontent.com/ggfevans/swiftbar-qmd/main/install.
 Open SwiftBar → Preferences → Plugins → **Install from URL** and paste:
 
 ```text
-https://raw.githubusercontent.com/ggfevans/swiftbar-qmd/main/qmd.30s.ts
+https://raw.githubusercontent.com/ggfevans/qmd-swiftbar/main/qmd.30s.ts
 ```
 
 SwiftBar handles download and placement. You still need Deno on your `$PATH`.
 
 ## Configure
 
-Configuration lives at `~/.config/swiftbar-qmd/config.yml`. Clicking the
+Configuration lives at `~/.config/qmd-swiftbar/config.yml`. Clicking the
 **Preferences…** entry in the dropdown opens it in your default editor
 (`$EDITOR`, falling back to `open -t`). Changes are picked up on the next
 30-second poll; no SwiftBar restart needed.

@@ -7,7 +7,7 @@ import type { Config } from "../lib/types.ts";
 function makeConfig(): Config {
   return {
     qmd: {
-      index_path: "/tmp/swiftbar-qmd-test/index.sqlite",
+      index_path: "/tmp/qmd-swiftbar-test/index.sqlite",
       daemon_url: "http://localhost:8181",
     },
     rollup: {
@@ -27,7 +27,7 @@ function makeConfig(): Config {
       hide_obsidian_when_absent: true,
     },
     logs: {
-      directory: "/tmp/swiftbar-qmd-test/logs",
+      directory: "/tmp/qmd-swiftbar-test/logs",
       retain_per_action: 10,
     },
   };

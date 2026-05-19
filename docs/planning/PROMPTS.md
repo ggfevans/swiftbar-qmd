@@ -1,4 +1,4 @@
-# swiftbar-qmd — Implementation blueprint and code-gen prompts
+# qmd-swiftbar — Implementation blueprint and code-gen prompts
 
 This document drives implementation. It contains:
 
@@ -171,7 +171,7 @@ Prompts are designed to be applied in order. Earlier prompts produce code that l
 Context: the repo currently contains only `LICENSE` and `docs/planning/*.md`. There is no code yet. This step creates the project skeleton so the plugin loads in SwiftBar showing a placeholder icon.
 
 ```text
-You are implementing swiftbar-qmd, a SwiftBar plugin for monitoring qmd state.
+You are implementing qmd-swiftbar, a SwiftBar plugin for monitoring qmd state.
 The canonical spec is docs/planning/SPEC.md; the decision rationale is in docs/planning/DECISIONS.md.
 
 Repo state before this step: only LICENSE and docs/planning/*.md exist.
@@ -193,8 +193,8 @@ Create the following files:
    - main() function that prints exactly:
        "🟢"
        "---"
-       "swiftbar-qmd v0.1.0 | size=12 color=#8a8a8e shell="
-       "Show planning docs | bash=\"open\" param1=\"https://github.com/ggfevans/swiftbar-qmd\" terminal=false"
+       "qmd-swiftbar v0.1.0 | size=12 color=#8a8a8e shell="
+       "Show planning docs | bash=\"open\" param1=\"https://github.com/ggfevans/qmd-swiftbar\" terminal=false"
      then exits 0. Use console.log lines.
    - Top-level: await main().
 
@@ -205,7 +205,7 @@ Create the following files:
    Pure type-only module; no runtime code. Export everything.
 
 4. config.example.yml at the repo root.
-   The full YAML config tree from SPEC.md §7.2, including the inline comments. This file ships verbatim and is also copied to ~/.config/swiftbar-qmd/config.yml on first run.
+   The full YAML config tree from SPEC.md §7.2, including the inline comments. This file ships verbatim and is also copied to ~/.config/qmd-swiftbar/config.yml on first run.
 
 5. .github/workflows/ci.yml
    Verbatim from SPEC.md §20.
@@ -257,10 +257,10 @@ Create lib/config.ts implementing the contract in SPEC.md §5.2 (config.ts secti
 Requirements:
 
 - DEFAULT_CONFIG must match SPEC.md §7.2 exactly (after YAML parsing).
-- CONFIG_PATH = ~/.config/swiftbar-qmd/config.yml with ~ expanded via Deno.env.get('HOME').
+- CONFIG_PATH = ~/.config/qmd-swiftbar/config.yml with ~ expanded via Deno.env.get('HOME').
 - EXAMPLE_CONFIG_PATH = config.example.yml resolved relative to the script.
 - loadConfig:
-    1. If CONFIG_PATH doesn't exist, copy EXAMPLE_CONFIG_PATH there (creating ~/.config/swiftbar-qmd/ if needed). If the example also doesn't exist, write DEFAULT_CONFIG serialised to YAML.
+    1. If CONFIG_PATH doesn't exist, copy EXAMPLE_CONFIG_PATH there (creating ~/.config/qmd-swiftbar/ if needed). If the example also doesn't exist, write DEFAULT_CONFIG serialised to YAML.
     2. Read the file.
     3. Parse with jsr:@std/yaml.
     4. Validate via validateConfig.
@@ -270,7 +270,7 @@ Requirements:
 
 Tests in tests/config_test.ts using jsr:@std/testing/asserts:
 
-  - default config loaded when CONFIG_PATH missing (use /tmp/swiftbar-qmd-test/ to avoid touching user home)
+  - default config loaded when CONFIG_PATH missing (use /tmp/qmd-swiftbar-test/ to avoid touching user home)
   - valid YAML round-trips identically
   - rollup.coverage.amber_percent = -5 → falls back to 95, errors contains the violation string
   - rollup.coverage.red_percent = 200 → falls back to 50
@@ -444,7 +444,7 @@ Create lib/log.ts with the contract from SPEC.md §5.2:
 
 Implementation requirements:
 
-- Log file path: ${CACHE_DIR}/error.log where CACHE_DIR = ~/.cache/swiftbar-qmd.
+- Log file path: ${CACHE_DIR}/error.log where CACHE_DIR = ~/.cache/qmd-swiftbar.
 - Format: `${new Date().toISOString()} [${level}] ${category}: ${message}` plus '\n${error.stack}\n' if error present.
 - Rotate: before write, if file size > 1 MB, rename to error.log.1 (overwriting any existing .1), then write to a fresh error.log.
 - Ensure CACHE_DIR exists (Deno.mkdir with recursive).
@@ -490,7 +490,7 @@ Create lib/persistence.ts implementing the full contract from SPEC.md §5.2 pers
 
 Requirements:
 
-- CACHE_DIR = ~/.cache/swiftbar-qmd (expand ~ from Deno.env.get('HOME')).
+- CACHE_DIR = ~/.cache/qmd-swiftbar (expand ~ from Deno.env.get('HOME')).
 - Subdirs: jobs/, logs/, sentinels/. Ensure on every call that touches them.
 - File schemas match SPEC.md §15 exactly:
     last-poll.json     — see §15.1 (PollSnapshot serialised)
@@ -506,7 +506,7 @@ Requirements:
 
 Tests in tests/persistence_test.ts:
 
-Use a temporary CACHE_DIR via an internal setCacheDir helper or environment variable override (SWIFTBAR_QMD_CACHE_DIR). In production, default to ~/.cache/swiftbar-qmd; in tests, override to a per-test temp directory.
+Use a temporary CACHE_DIR via an internal setCacheDir helper or environment variable override (QMD_SWIFTBAR_CACHE_DIR). In production, default to ~/.cache/qmd-swiftbar; in tests, override to a per-test temp directory.
 
 Test cases:
 - writeSnapshot then readSnapshot round-trips (Date fields preserved)
@@ -708,7 +708,7 @@ Implementation per SPEC.md §10 and Appendix A:
     "›_ Show qmd status in Terminal | bash=\"qmd\" param1=\"status\" terminal=true"
 - "---"
     "⚙ Preferences… | bash=\"open\" param1=\"-t\" param2=\"<config-path>\" terminal=false shortcut=CmdOrCtrl+Comma"
-    "ⓘ About swiftbar-qmd | bash=\"open\" param1=\"https://github.com/ggfevans/swiftbar-qmd\" terminal=false"
+    "ⓘ About qmd-swiftbar | bash=\"open\" param1=\"https://github.com/ggfevans/qmd-swiftbar\" terminal=false"
 
 Actions in this step DO NOT NEED to actually do anything yet; the bash directives are wired to the plugin's own path, which will route to runAction in step 11. Until then, clicking an action will re-invoke the plugin with --action <id>, which currently falls through to the poll path; that's fine.
 
@@ -802,7 +802,7 @@ Action mapping per SPEC.md §5.2 actions.ts table:
   stop-daemon                 → ['qmd', 'mcp', 'stop']
   start-daemon                → ['qmd', 'mcp', '--http', '--daemon']
   cleanup                     → ['qmd', 'cleanup']                       (CONFIRM FIRST — handled step 13)
-  recheck                     → touch ~/.cache/swiftbar-qmd/sentinels/recheck (no qmd invocation)
+  recheck                     → touch ~/.cache/qmd-swiftbar/sentinels/recheck (no qmd invocation)
   show-context                → osascript with display dialog of qmd context output (synchronous, no PID tracking)
 
 Background spawn pattern per SPEC.md §13.2:
@@ -861,7 +861,7 @@ Mock the command-spawn and PID-file functions via dependency injection or a swap
 Wiring: argv branching in qmd.30s.ts as above. Now clicking "Update all collections" actually invokes `qmd update`.
 
 Run: deno fmt && deno lint && deno check && deno test — all pass.
-Manual smoke: click "Update all" from the menubar; verify a PID file appears in ~/.cache/swiftbar-qmd/jobs/ and a log file in ~/.cache/swiftbar-qmd/logs/.
+Manual smoke: click "Update all" from the menubar; verify a PID file appears in ~/.cache/qmd-swiftbar/jobs/ and a log file in ~/.cache/qmd-swiftbar/logs/.
 
 Acceptance: every non-confirm action (per the mapping table above) runs end-to-end when clicked, leaving a PID file and a log file.
 ```
@@ -929,7 +929,7 @@ Confirmation dialogs in lib/actions.ts:
 
 For actionId 'force-reembed-collection' and 'cleanup', BEFORE spawning the qmd command, run an osascript confirmation dialog:
 
-  const script = `display dialog "<message>" with title "swiftbar-qmd" buttons {"Cancel", "<proceed-label>"} default button "Cancel" with icon caution`;
+  const script = `display dialog "<message>" with title "qmd-swiftbar" buttons {"Cancel", "<proceed-label>"} default button "Cancel" with icon caution`;
   const result = await new Deno.Command('osascript', { args: ['-e', script] }).output();
   const stdout = new TextDecoder().decode(result.stdout);
   if (!stdout.includes('button returned:<proceed-label>')) {
@@ -1015,7 +1015,7 @@ emitNotifications:
 
 - Filter by config.notifications.<kind>; drop events the user has opted out of.
 - Apply dedupe: build dedupe key per §14.1; if snapshot.recentlyNotified[key] is within 5 minutes, drop event.
-- Cap at 3 notifications per poll. If more remain after dedupe, fire 3 and append a single "+ N more — see menu" notification with title "swiftbar-qmd" subtitle "(N additional events suppressed)".
+- Cap at 3 notifications per poll. If more remain after dedupe, fire 3 and append a single "+ N more — see menu" notification with title "qmd-swiftbar" subtitle "(N additional events suppressed)".
 - For each fired notification:
     - osascript invocation per SPEC.md §14.2 (escape backslashes and quotes).
     - Update snapshot.recentlyNotified[key] = new Date().toISOString().
@@ -1189,7 +1189,7 @@ Create install.sh at the repo root per SPEC.md §21.2 verbatim:
   - Preflight: deno present, SwiftBar present.
   - Download qmd.30s.ts and config.example.yml from raw.githubusercontent.com.
   - chmod +x the plugin.
-  - Seed ~/.config/swiftbar-qmd/config.yml from example if not present.
+  - Seed ~/.config/qmd-swiftbar/config.yml from example if not present.
   - Print "restart SwiftBar" hint.
   - Accept a positional REF arg defaulting to "main" so users can install a specific tag.
 
@@ -1197,7 +1197,7 @@ chmod +x install.sh.
 
 Rewrite README.md as a real user-facing readme. Sections:
 
-  # swiftbar-qmd
+  # qmd-swiftbar
   
   > One-line description: "Ambient operational visibility for qmd in your macOS menubar."
   
@@ -1215,14 +1215,14 @@ Rewrite README.md as a real user-facing readme. Sections:
   (commands from §21.1)
   
   ### Curl installer
-  curl -fsSL https://raw.githubusercontent.com/ggfevans/swiftbar-qmd/main/install.sh | bash
+  curl -fsSL https://raw.githubusercontent.com/ggfevans/qmd-swiftbar/main/install.sh | bash
   
   ### SwiftBar "Install from URL"
   (instructions + raw GitHub URL)
   
   ## Configure
   
-  Brief note that config lives at ~/.config/swiftbar-qmd/config.yml; clicking Preferences… opens it in your default editor. Link to SPEC.md §7.2 for the full schema.
+  Brief note that config lives at ~/.config/qmd-swiftbar/config.yml; clicking Preferences… opens it in your default editor. Link to SPEC.md §7.2 for the full schema.
   
   ## What the icon colours mean
   
@@ -1286,7 +1286,7 @@ A few things that aren't in any single prompt but worth keeping in mind:
 
 - **Don't ship debugging console.error calls.** SwiftBar surfaces stderr in its plugin console; intentional warnings are fine, leftover debugging is noise. Use lib/log.ts instead.
 
-- **Test temporary files.** Many steps require tests that write files. Use Deno.makeTempDir() and an internal helper to set CACHE_DIR for the duration of the test; never let tests write to the real ~/.cache/swiftbar-qmd.
+- **Test temporary files.** Many steps require tests that write files. Use Deno.makeTempDir() and an internal helper to set CACHE_DIR for the duration of the test; never let tests write to the real ~/.cache/qmd-swiftbar.
 
 - **Commit per step.** Each of the 17 prompts is a natural commit boundary. Commit messages should reference the step number and the spec section being implemented (e.g. "step 7: state reader (SPEC §5.2, §8)").
 

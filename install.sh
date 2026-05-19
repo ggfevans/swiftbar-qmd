@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="ggfevans/swiftbar-qmd"
+REPO="ggfevans/qmd-swiftbar"
 # Default to the latest tagged release so curl-pipe-bash installs are
 # reproducible. Pass any ref (tag, branch, SHA) as the first arg to
 # override — e.g. `bash -s main` to track tip-of-tree.
 REF="${1:-v1.0.0}"
 PLUGIN_DIR="$HOME/Library/Application Support/SwiftBar/Plugins"
-CONFIG_DIR="$HOME/.config/swiftbar-qmd"
+CONFIG_DIR="$HOME/.config/qmd-swiftbar"
 
 # Preflight
 command -v deno >/dev/null || { echo "ERROR: deno not found. Install from https://deno.com/"; exit 1; }

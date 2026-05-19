@@ -640,7 +640,7 @@ Deno.test("buildConfirmDialogScript: includes 60s timeout (PR #1 A7)", () => {
   // future refactor doesn't drop the timeout when it tidies the
   // string assembly.
   assertStringIncludes(script, `display dialog "Force re-embed?"`);
-  assertStringIncludes(script, `with title "swiftbar-qmd"`);
+  assertStringIncludes(script, `with title "qmd-swiftbar"`);
   assertStringIncludes(script, `buttons {"Cancel", "Re-embed"}`);
   assertStringIncludes(script, `default button "Cancel"`);
   assertStringIncludes(script, `with icon caution`);

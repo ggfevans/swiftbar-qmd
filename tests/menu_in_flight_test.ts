@@ -14,7 +14,7 @@ import type {
 function makeConfig(): Config {
   return {
     qmd: {
-      index_path: "/tmp/swiftbar-qmd-menu-test/index.sqlite",
+      index_path: "/tmp/qmd-swiftbar-menu-test/index.sqlite",
       daemon_url: "http://localhost:8181",
     },
     rollup: {
@@ -34,7 +34,7 @@ function makeConfig(): Config {
       hide_obsidian_when_absent: true,
     },
     logs: {
-      directory: "/tmp/swiftbar-qmd-menu-test/logs",
+      directory: "/tmp/qmd-swiftbar-menu-test/logs",
       retain_per_action: 10,
     },
   };

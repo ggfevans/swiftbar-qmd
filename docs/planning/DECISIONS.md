@@ -1,4 +1,4 @@
-# swiftbar-qmd — Decision log
+# qmd-swiftbar — Decision log
 
 This document records the 16 architectural decisions taken during the v1 scoping conversation, with the alternatives considered and the rationale for each choice. Use it when you need to understand *why* something is the way it is in [`SPEC.md`](SPEC.md), or when reconsidering a decision because requirements have shifted.
 
@@ -178,7 +178,7 @@ Decisions are numbered in the order they were taken. Each entry follows the same
 
 ## D11 — Configuration mechanism
 
-**Chosen:** YAML file at `~/.config/swiftbar-qmd/config.yml`, validated on load, opened via "Preferences…" menu item (`open -t`).
+**Chosen:** YAML file at `~/.config/qmd-swiftbar/config.yml`, validated on load, opened via "Preferences…" menu item (`open -t`).
 
 **Alternatives considered:**
 
@@ -223,7 +223,7 @@ Decisions are numbered in the order they were taken. Each entry follows the same
 
 **Why this one:** Consistent with D8's "no activity feed at v1" call. One item gets you to the most recent log in one click; older logs accumulate on disk for terminal access if needed. Re-adding a "Recent jobs" submenu would partially recover what we just deferred. "No log surface" went too far — failure debugging without a one-click path to the log is friction we don't need.
 
-**Implications:** Background spawn pattern documented in [`SPEC.md`](SPEC.md) §13. PID file directory at `~/.cache/swiftbar-qmd/jobs/`. Log directory with retention controlled by `config.logs.retain_per_action`. "Recent jobs" submenu is a likely v1.1 add if user demand surfaces.
+**Implications:** Background spawn pattern documented in [`SPEC.md`](SPEC.md) §13. PID file directory at `~/.cache/qmd-swiftbar/jobs/`. Log directory with retention controlled by `config.logs.retain_per_action`. "Recent jobs" submenu is a likely v1.1 add if user demand surfaces.
 
 ---
 

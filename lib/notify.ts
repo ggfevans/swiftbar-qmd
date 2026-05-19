@@ -439,7 +439,7 @@ export async function emitNotifications(
 
   if (overflow.length > 0) {
     await d.fireNotification(
-      "swiftbar-qmd",
+      "qmd-swiftbar",
       `(${overflow.length} additional events suppressed)`,
       `+ ${overflow.length} more — see menu`,
     );

@@ -28,7 +28,7 @@ First public release. Implements the full v1 specification documented in
 - Opt-in `job-complete` and `threshold-breach` notifications.
 - First-run detection with three contextual menu states (`no-qmd`,
   `no-collections`, `empty-index`) (SPEC §12).
-- YAML configuration at `~/.config/swiftbar-qmd/config.yml` with range
+- YAML configuration at `~/.config/qmd-swiftbar/config.yml` with range
   validation, per-poll hot-reload, and a documented `config.example.yml` (SPEC
   §7).
 - Defensive read path with last-good snapshot fallback and forced-red after

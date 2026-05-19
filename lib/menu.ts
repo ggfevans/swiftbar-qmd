@@ -90,8 +90,8 @@ function renderNoQmd(pluginPath: string): string {
     `   Install qmd from github.com/tobi/qmd | bash="open" param1="https://github.com/tobi/qmd#installation" terminal=false`,
     `   Re-check now | bash="${pluginPath}" param1="--action" param2="recheck" terminal=false refresh=true`,
     "---",
-    `   Preferences… | bash="open" param1="-t" param2=$HOME/.config/swiftbar-qmd/config.yml terminal=false`,
-    `   About swiftbar-qmd | bash="open" param1="https://github.com/ggfevans/swiftbar-qmd" terminal=false`,
+    `   Preferences… | bash="open" param1="-t" param2=$HOME/.config/qmd-swiftbar/config.yml terminal=false`,
+    `   About qmd-swiftbar | bash="open" param1="https://github.com/ggfevans/qmd-swiftbar" terminal=false`,
   ];
   return lines.join("\n") + "\n";
 }
@@ -106,8 +106,8 @@ function renderNoCollections(pluginPath: string): string {
     "   Run 'qmd collection add' in a terminal to start. | size=11 color=#6e6e72 shell=",
     `   Re-check now | bash="${pluginPath}" param1="--action" param2="recheck" terminal=false refresh=true`,
     "---",
-    `   Preferences… | bash="open" param1="-t" param2=$HOME/.config/swiftbar-qmd/config.yml terminal=false`,
-    `   About swiftbar-qmd | bash="open" param1="https://github.com/ggfevans/swiftbar-qmd" terminal=false`,
+    `   Preferences… | bash="open" param1="-t" param2=$HOME/.config/qmd-swiftbar/config.yml terminal=false`,
+    `   About qmd-swiftbar | bash="open" param1="https://github.com/ggfevans/qmd-swiftbar" terminal=false`,
   ];
   return lines.join("\n") + "\n";
 }
@@ -127,8 +127,8 @@ function renderEmptyIndex(pluginPath: string, _config: Config): string {
     "---",
     `↻ Run update | bash="${pluginPath}" param1="--action" param2="update-all" terminal=false refresh=true`,
     "---",
-    `   Preferences… | bash="open" param1="-t" param2=$HOME/.config/swiftbar-qmd/config.yml terminal=false`,
-    `   About swiftbar-qmd | bash="open" param1="https://github.com/ggfevans/swiftbar-qmd" terminal=false`,
+    `   Preferences… | bash="open" param1="-t" param2=$HOME/.config/qmd-swiftbar/config.yml terminal=false`,
+    `   About qmd-swiftbar | bash="open" param1="https://github.com/ggfevans/qmd-swiftbar" terminal=false`,
   ];
   return lines.join("\n") + "\n";
 }
@@ -412,7 +412,7 @@ function renderCollectionSubmenu(
     // One-off debug: lands in SwiftBar's plugin console alongside any
     // other stderr from the script; nothing else in renderMenu touches I/O.
     console.error(
-      `swiftbar-qmd: collection name "${c.name}" contains unsafe characters; submenu actions suppressed`,
+      `qmd-swiftbar: collection name "${c.name}" contains unsafe characters; submenu actions suppressed`,
     );
   }
 
@@ -626,8 +626,8 @@ function renderUtilityFooter(
 /** Renders the Preferences / About footer block (matches first-run menus). */
 function renderPreferencesFooter(): string[] {
   return [
-    `⚙ Preferences… | bash="open" param1="-t" param2=$HOME/.config/swiftbar-qmd/config.yml terminal=false shortcut=CmdOrCtrl+Comma`,
-    `ⓘ About swiftbar-qmd | bash="open" param1="https://github.com/ggfevans/swiftbar-qmd" terminal=false`,
+    `⚙ Preferences… | bash="open" param1="-t" param2=$HOME/.config/qmd-swiftbar/config.yml terminal=false shortcut=CmdOrCtrl+Comma`,
+    `ⓘ About qmd-swiftbar | bash="open" param1="https://github.com/ggfevans/qmd-swiftbar" terminal=false`,
   ];
 }
 

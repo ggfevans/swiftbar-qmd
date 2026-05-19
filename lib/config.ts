@@ -8,7 +8,7 @@ import type { Config } from "./types.ts";
 /** Canonical user config path. */
 export const CONFIG_PATH: string = (() => {
   const home = Deno.env.get("HOME") ?? "";
-  return `${home}/.config/swiftbar-qmd/config.yml`;
+  return `${home}/.config/qmd-swiftbar/config.yml`;
 })();
 
 /**
@@ -48,7 +48,7 @@ export const DEFAULT_CONFIG: Config = {
     hide_obsidian_when_absent: true,
   },
   logs: {
-    directory: expandTilde("~/.cache/swiftbar-qmd/logs"),
+    directory: expandTilde("~/.cache/qmd-swiftbar/logs"),
     retain_per_action: 10,
   },
 };
@@ -292,8 +292,8 @@ export function validateConfig(
         // traversal segments like "../" from bypassing the subtree check.
         const normalized = resolve(expanded);
         const allowedRoots = [
-          resolve(expandTilde("~/.cache/swiftbar-qmd")),
-          resolve(expandTilde("~/.config/swiftbar-qmd")),
+          resolve(expandTilde("~/.cache/qmd-swiftbar")),
+          resolve(expandTilde("~/.config/qmd-swiftbar")),
         ];
         const isAllowed = allowedRoots.some(
           (root) => normalized === root || normalized.startsWith(root + "/"),

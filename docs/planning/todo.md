@@ -1,4 +1,4 @@
-# swiftbar-qmd — Implementation checklist
+# qmd-swiftbar — Implementation checklist
 
 Working checklist tracking implementation from empty repo through v1.0.0 release. Each step maps to a prompt in [`docs/planning/PROMPTS.md`](docs/planning/PROMPTS.md) and a section in [`docs/planning/SPEC.md`](docs/planning/SPEC.md).
 
@@ -18,7 +18,7 @@ Things to verify before writing any code.
 - [ ] `~/.cache/qmd/index.sqlite` exists and is readable
 - [ ] Spec read end-to-end (at least skim §§1–10)
 - [ ] Decision log read end-to-end (it's the shortest doc)
-- [ ] Local working clone of `ggfevans/swiftbar-qmd` on a feature branch (not `main`)
+- [ ] Local working clone of `ggfevans/qmd-swiftbar` on a feature branch (not `main`)
 - [ ] Editor / IDE set up with Deno LSP enabled
 
 ---
@@ -135,7 +135,7 @@ Prompt 5 · Spec §5.2
 Prompt 6 · Spec §5.2, §15
 
 - [ ] `lib/persistence.ts` exports `CACHE_DIR` and all 10 functions from SPEC §5.2
-- [ ] `CACHE_DIR` = `~/.cache/swiftbar-qmd`; subdirs `jobs/`, `logs/`, `sentinels/` ensured
+- [ ] `CACHE_DIR` = `~/.cache/qmd-swiftbar`; subdirs `jobs/`, `logs/`, `sentinels/` ensured
 - [ ] `readSnapshot` / `writeSnapshot` round-trip with atomic rename (write `.tmp`, then `Deno.rename`)
 - [ ] Snapshot serialises Dates as ISO; deserialises back to Date
 - [ ] `readJobPidFiles` returns empty array when no PID files exist
@@ -145,7 +145,7 @@ Prompt 6 · Spec §5.2, §15
 - [ ] `logsDirContents` lists logs/ with mtime + size
 - [ ] `pruneLogs(retainPerAction)` deletes oldest beyond N per action
 - [ ] All readers handle "file does not exist" as null/empty (no throw)
-- [ ] Tests use overridable `CACHE_DIR` (env var `SWIFTBAR_QMD_CACHE_DIR`)
+- [ ] Tests use overridable `CACHE_DIR` (env var `QMD_SWIFTBAR_CACHE_DIR`)
 - [ ] `tests/persistence_test.ts` covers all 8 cases from prompt 6
 - [ ] `main()` now calls `await readSnapshot()` after `loadConfig` (discarded; proves the module loads)
 - [ ] `deno fmt && deno lint && deno check && deno test` all pass
@@ -261,7 +261,7 @@ Prompt 11 · Spec §5.2, §13
 - [ ] `qmd.30s.ts` `main()` branches on `--action` argv → calls `runAction`, exits
 - [ ] Argv parser handles `--collection <name>` and other flags
 - [ ] `tests/actions_test.ts` mocks command-spawn + PID-file ops; covers mapping, locking, sentinel, show-context
-- [ ] Manual smoke: click "Update all collections" → PID file appears in `~/.cache/swiftbar-qmd/jobs/`, log file populates
+- [ ] Manual smoke: click "Update all collections" → PID file appears in `~/.cache/qmd-swiftbar/jobs/`, log file populates
 - [ ] `deno fmt && deno lint && deno check && deno test` all pass
 - [ ] Committed: `step 11: action runner + argv (SPEC §5.2, §13)`
 
@@ -424,12 +424,12 @@ Before tagging v1.0.0.
 - [ ] No TODO comments without an associated GitHub issue link
 
 ### Manual QA (SPEC §19.3)
-- [ ] **QA 1** — Fresh install: delete `~/.config/swiftbar-qmd/` and `~/.cache/swiftbar-qmd/`, drop plugin file, restart SwiftBar. Icon appears in ≤ 30s; first-run menu shows correct state.
+- [ ] **QA 1** — Fresh install: delete `~/.config/qmd-swiftbar/` and `~/.cache/qmd-swiftbar/`, drop plugin file, restart SwiftBar. Icon appears in ≤ 30s; first-run menu shows correct state.
 - [ ] **QA 2** — With qmd configured and indexed: normal menu appears, all collections listed with correct meta.
 - [ ] **QA 3** — Click "Update all collections": PID file appears, menu shows "Running…" within 30s, icon goes yellow, completion within expected time, log populated.
 - [ ] **QA 4** — `qmd mcp stop` from terminal: notification fires within 30s, icon goes red, "Start MCP daemon" appears in menu.
 - [ ] **QA 5** — Hover collection row: submenu opens to the **left** (since icon is right-aligned). Reveal in Finder opens the path.
-- [ ] **QA 6** — `echo "garbage" > ~/.config/swiftbar-qmd/config.yml`: menu still renders, `⚠ Config error` header shown, `error.log` has parse error.
+- [ ] **QA 6** — `echo "garbage" > ~/.config/qmd-swiftbar/config.yml`: menu still renders, `⚠ Config error` header shown, `error.log` has parse error.
 - [ ] **QA 7** — Edit `freshness.amber_hours` to `1`: within 30s, any collection with freshness > 1h goes amber and icon updates.
 - [ ] **QA 8** — `mv` a collection's source directory: path-unreachable notification fires, icon red, collection row shows error.
 - [ ] **QA 9** — Click "Open in Obsidian" on an Obsidian-vault collection: Obsidian opens with the vault.

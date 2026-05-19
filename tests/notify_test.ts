@@ -534,7 +534,7 @@ Deno.test("emitNotifications: 5 events with cap 3 fires 3 + 1 'more' fallback", 
   // 3 real notifications + 1 "more" fallback = 4 calls total.
   assertEquals(rec.calls.length, 4);
   const fallback = rec.calls[3];
-  assertEquals(fallback.title, "swiftbar-qmd");
+  assertEquals(fallback.title, "qmd-swiftbar");
   assertEquals(fallback.subtitle, "(2 additional events suppressed)");
   assertEquals(fallback.body, "+ 2 more — see menu");
 

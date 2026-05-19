@@ -1,4 +1,4 @@
-# swiftbar-qmd — Background research
+# qmd-swiftbar — Background research
 
 This document records the background research conducted during scoping. Its purpose is to make the decisions in [`DECISIONS.md`](DECISIONS.md) reproducible — if anyone (including future-you) wants to revisit a choice, the evidence is here, not lost in a chat log.
 
@@ -50,7 +50,7 @@ No SwiftBar plugin, no Raycast extension, no Tauri/Electron app, no Homebrew for
 
 ### Why there's a gap
 
-The qmd project is relatively young — v2.0 stabilised the library interface around late 2025/early 2026. Tobi himself tends to ship menubar utilities (e.g. AudioPriorityBar) as separate native macOS apps rather than bolting GUIs into his CLI tools, so a menubar wrapper is a natural fit for an outside contributor rather than the qmd project itself. The existing TUI scratches most of the power-user itch, but TUIs don't help when you're not in a terminal — which is the gap swiftbar-qmd fills.
+The qmd project is relatively young — v2.0 stabilised the library interface around late 2025/early 2026. Tobi himself tends to ship menubar utilities (e.g. AudioPriorityBar) as separate native macOS apps rather than bolting GUIs into his CLI tools, so a menubar wrapper is a natural fit for an outside contributor rather than the qmd project itself. The existing TUI scratches most of the power-user itch, but TUIs don't help when you're not in a terminal — which is the gap qmd-swiftbar fills.
 
 ### What this means for us
 
@@ -74,7 +74,7 @@ The qmd project is relatively young — v2.0 stabilised the library interface ar
 
 ### Question
 
-The project owner flagged that Bun had recently undergone a major rewrite. Should we still consider Bun for swiftbar-qmd's runtime, or does the rewrite materially change the risk profile?
+The project owner flagged that Bun had recently undergone a major rewrite. Should we still consider Bun for qmd-swiftbar's runtime, or does the rewrite materially change the risk profile?
 
 ### Context
 
@@ -124,7 +124,7 @@ Bun's release cadence prior to the rewrite was roughly four months (1.0 → 1.1 
 | Expected shakedown period | 3–6 months minimum, by analogy to other large runtime rewrites |
 | Native module compatibility (incl. `node-llama-cpp` used by qmd) | Unverified on new Bun |
 
-### What this means for swiftbar-qmd
+### What this means for qmd-swiftbar
 
 Using new-Bun would mean:
 
@@ -191,8 +191,8 @@ From the [qmd README](https://github.com/tobi/qmd) (v2.1.0, May 2026):
 - **Daemon PID file:** `~/.cache/qmd/mcp.pid` when `qmd mcp --daemon` is running.
 - **HTTP MCP endpoint:** `localhost:8181/mcp` (POST, JSON responses) and `localhost:8181/health` (GET, uptime check).
 - **Model cache:** `~/.cache/qmd/models/` containing GGUF files. ~2.5 GB total when all three default models are present.
-- **CLI commands (used by swiftbar-qmd):** `qmd update`, `qmd embed [-c <name>] [-f]`, `qmd cleanup`, `qmd mcp --http --daemon`, `qmd mcp stop`, `qmd collection list`, `qmd status`.
-- **SDK read methods (used by swiftbar-qmd):** `createStore({ dbPath })`, `listCollections()`, `getStatus()`, `close()`.
+- **CLI commands (used by qmd-swiftbar):** `qmd update`, `qmd embed [-c <name>] [-f]`, `qmd cleanup`, `qmd mcp --http --daemon`, `qmd mcp stop`, `qmd collection list`, `qmd status`.
+- **SDK read methods (used by qmd-swiftbar):** `createStore({ dbPath })`, `listCollections()`, `getStatus()`, `close()`.
 - **SDK write methods (we delegate to the CLI instead):** `update()`, `embed()`, `addCollection()`, `removeCollection()`, etc.
 
 ### Implications for our spec

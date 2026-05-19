@@ -1,6 +1,6 @@
-# swiftbar-qmd — v1 Developer Specification
+# qmd-swiftbar — v1 Developer Specification
 
-**Repository:** `ggfevans/swiftbar-qmd`
+**Repository:** `ggfevans/qmd-swiftbar`
 **License:** MIT
 **Runtime:** Deno 2.x
 **Target platform:** macOS (Apple Silicon and Intel) via [SwiftBar](https://github.com/swiftbar/SwiftBar)
@@ -46,11 +46,11 @@ This document is the canonical implementation reference. A developer should be a
 
 ## 1. Summary
 
-swiftbar-qmd is a SwiftBar plugin that surfaces operational visibility into a running qmd installation through the macOS menubar. It answers two questions the user has on an ongoing basis: *what is qmd doing right now*, and *what state are my collections in*. It also provides one-click access to common maintenance actions (`qmd update`, `qmd embed`, MCP daemon control) so those operations do not require a context switch to the terminal.
+qmd-swiftbar is a SwiftBar plugin that surfaces operational visibility into a running qmd installation through the macOS menubar. It answers two questions the user has on an ongoing basis: *what is qmd doing right now*, and *what state are my collections in*. It also provides one-click access to common maintenance actions (`qmd update`, `qmd embed`, MCP daemon control) so those operations do not require a context switch to the terminal.
 
 The plugin is ADHD-first in design: a single ambient signal (the menubar icon's colour) answers "do I need to click?" at a glance, the dropdown menu is organised by signal type for fast scanning, and notifications are reserved exclusively for failures so the tool does not accumulate notification debt.
 
-It is explicitly **not** a search interface — searching is qmd's CLI / MCP / SDK job, and a separate TUI ([lazyqmd](https://github.com/AlexZeitler/lazyqmd)) already covers that surface. swiftbar-qmd is purely an operational dashboard.
+It is explicitly **not** a search interface — searching is qmd's CLI / MCP / SDK job, and a separate TUI ([lazyqmd](https://github.com/AlexZeitler/lazyqmd)) already covers that surface. qmd-swiftbar is purely an operational dashboard.
 
 ---
 
@@ -123,8 +123,8 @@ The plugin will *not*:
        Filesystem touchpoints:
        - ~/.cache/qmd/index.sqlite        (read)
        - ~/.cache/qmd/mcp.pid              (read)
-       - ~/.config/swiftbar-qmd/config.yml (read)
-       - ~/.cache/swiftbar-qmd/            (read + write)
+       - ~/.config/qmd-swiftbar/config.yml (read)
+       - ~/.cache/qmd-swiftbar/            (read + write)
 ```
 
 ### 3.2 Process lifecycle (poll cycle)
@@ -136,7 +136,7 @@ SwiftBar spawns qmd.30s.ts (no args = poll mode)
 │
 ├─ Parse argv: mode = 'poll' | 'action'
 │
-├─ Load and validate config from ~/.config/swiftbar-qmd/config.yml
+├─ Load and validate config from ~/.config/qmd-swiftbar/config.yml
 │  (write defaults file if missing; reject invalid types with safe fallback)
 │
 ├─ Run first-run detection (lib/detect.ts)
@@ -152,22 +152,22 @@ SwiftBar spawns qmd.30s.ts (no args = poll mode)
 │  ├─ SDK: store.listCollections() — per-collection metadata
 │  ├─ SDK: store.getStatus() — index health + counts
 │  ├─ HTTP: GET /health → daemon liveness (5s timeout)
-│  ├─ FS: scan ~/.cache/swiftbar-qmd/jobs/ for in-flight PIDs
-│  └─ FS: scan ~/.cache/swiftbar-qmd/recent-failures.json
+│  ├─ FS: scan ~/.cache/qmd-swiftbar/jobs/ for in-flight PIDs
+│  └─ FS: scan ~/.cache/qmd-swiftbar/recent-failures.json
 │  → returns: CurrentState
 │
 ├─ Compute rollup tier (lib/rollup.ts)
 │  → returns: 'green' | 'amber' | 'red' | 'grey'
 │
 ├─ Diff against last snapshot (lib/notify.ts)
-│  ├─ Load ~/.cache/swiftbar-qmd/last-poll.json
+│  ├─ Load ~/.cache/qmd-swiftbar/last-poll.json
 │  ├─ Identify transitions worth notifying
 │  └─ Fire notifications via osascript (one per transition)
 │
 ├─ Render menu output to stdout (lib/menu.ts)
 │  └─ SwiftBar format: first line = icon spec, then '---', then rows
 │
-├─ Write new snapshot to ~/.cache/swiftbar-qmd/last-poll.json
+├─ Write new snapshot to ~/.cache/qmd-swiftbar/last-poll.json
 │
 └─ Exit 0
 ```
@@ -184,9 +184,9 @@ User clicks "Run update"
 ├─ Action runner (lib/actions.ts):
 │  ├─ Verify no PID file exists for this action; if it does, exit silently
 │  ├─ Compose command: ['qmd', 'update']
-│  ├─ Open log file: ~/.cache/swiftbar-qmd/logs/update-all-<ts>.log
+│  ├─ Open log file: ~/.cache/qmd-swiftbar/logs/update-all-<ts>.log
 │  ├─ Spawn child detached, stdout+stderr → log file
-│  ├─ Write PID file: ~/.cache/swiftbar-qmd/jobs/update-all.pid
+│  ├─ Write PID file: ~/.cache/qmd-swiftbar/jobs/update-all.pid
 │  │  with JSON: { pid: 12345, started_at: ISO, command: [...] }
 │  └─ Exit 0 immediately (do NOT wait for child)
 │
@@ -215,7 +215,7 @@ Next poll cycle:
 │     └─ Delete PID file
 ```
 
-The child process does not know about swiftbar-qmd; we infer completion entirely from the PID disappearing. To get the exit code without polling stdout, the action runner wraps the child invocation in a small shell snippet:
+The child process does not know about qmd-swiftbar; we infer completion entirely from the PID disappearing. To get the exit code without polling stdout, the action runner wraps the child invocation in a small shell snippet:
 
 ```bash
 ( qmd update > log 2>&1; echo "EXIT_CODE=$?" >> log ) &
@@ -240,13 +240,13 @@ The plugin runs with an explicit allow-list, declared in the shebang. These also
 ```bash
 #!/usr/bin/env -S deno run \
   --allow-net=localhost:8181 \
-  --allow-read=$HOME/.cache/qmd,$HOME/.config/swiftbar-qmd,$HOME/.cache/swiftbar-qmd \
-  --allow-write=$HOME/.cache/swiftbar-qmd,$HOME/.config/swiftbar-qmd \
+  --allow-read=$HOME/.cache/qmd,$HOME/.config/qmd-swiftbar,$HOME/.cache/qmd-swiftbar \
+  --allow-write=$HOME/.cache/qmd-swiftbar,$HOME/.config/qmd-swiftbar \
   --allow-run=qmd,open,osascript,kill \
   --allow-env=HOME,PATH,EDITOR
 ```
 
-The `--allow-net` is narrowed to the daemon endpoint. `--allow-write` to `~/.config/swiftbar-qmd` is needed only to seed the example config on first run. `--allow-run` is constrained to the four executables we shell out to.
+The `--allow-net` is narrowed to the daemon endpoint. `--allow-write` to `~/.config/qmd-swiftbar` is needed only to seed the example config on first run. `--allow-run` is constrained to the four executables we shell out to.
 
 ### 4.3 Dependencies
 
@@ -281,7 +281,7 @@ The plugin invokes these via `--allow-run`:
 ### 5.1 Tree
 
 ```
-swiftbar-qmd/
+qmd-swiftbar/
 ├── qmd.30s.ts              # SwiftBar entry point (interval encoded in filename)
 ├── lib/
 │   ├── types.ts            # All TypeScript types
@@ -330,7 +330,7 @@ Pure type-only module. Re-exports every type used across the codebase. See §6 f
 #### `lib/config.ts`
 
 ```typescript
-export const CONFIG_PATH = `${Deno.env.get('HOME')}/.config/swiftbar-qmd/config.yml`;
+export const CONFIG_PATH = `${Deno.env.get('HOME')}/.config/qmd-swiftbar/config.yml`;
 export const EXAMPLE_CONFIG_PATH = new URL('../config.example.yml', import.meta.url).pathname;
 
 /** Load and validate config; create from example on first run; fall back to defaults on parse failure. */
@@ -432,7 +432,7 @@ export async function runAction(id: ActionId, args: Record<string, string>): Pro
 Action runner protocol:
 
 1. Validate `args` for the action's required shape.
-2. Acquire the action's lockfile (`~/.cache/swiftbar-qmd/jobs/<action-id>.pid`); if present and PID alive, exit silently.
+2. Acquire the action's lockfile (`~/.cache/qmd-swiftbar/jobs/<action-id>.pid`); if present and PID alive, exit silently.
 3. Construct command (mapping below).
 4. Spawn child detached with output → log file.
 5. Write PID file with metadata.
@@ -473,7 +473,7 @@ Each `emitNotifications` call invokes one `osascript` per event, capped to 3 sim
 #### `lib/persistence.ts`
 
 ```typescript
-export const CACHE_DIR = `${Deno.env.get('HOME')}/.cache/swiftbar-qmd`;
+export const CACHE_DIR = `${Deno.env.get('HOME')}/.cache/qmd-swiftbar`;
 
 export async function readSnapshot(): Promise<PollSnapshot | null>;
 export async function writeSnapshot(snapshot: PollSnapshot): Promise<void>;
@@ -512,7 +512,7 @@ export function logError(category: string, message: string, error?: Error): Prom
 export function logInfo(category: string, message: string): Promise<void>;
 ```
 
-Writes to `~/.cache/swiftbar-qmd/error.log` (both info and error). Rotates at 1 MB.
+Writes to `~/.cache/qmd-swiftbar/error.log` (both info and error). Rotates at 1 MB.
 
 ---
 
@@ -664,11 +664,11 @@ export interface LogFileInfo {
 
 ### 7.1 File location and bootstrap
 
-Canonical path: `~/.config/swiftbar-qmd/config.yml`.
+Canonical path: `~/.config/qmd-swiftbar/config.yml`.
 
 On first run, if the file is absent:
 
-1. Create `~/.config/swiftbar-qmd/` if missing.
+1. Create `~/.config/qmd-swiftbar/` if missing.
 2. Copy `config.example.yml` from the install location (next to the script) to the canonical path.
 3. If the example is also missing (e.g. plugin file moved without the example), serialise `DEFAULT_CONFIG` to YAML and write it.
 
@@ -677,7 +677,7 @@ This means the user always has a real file they can hand-edit, never just defaul
 ### 7.2 Schema and defaults
 
 ```yaml
-# swiftbar-qmd config — values shown are defaults
+# qmd-swiftbar config — values shown are defaults
 # Tuning these adjusts what triggers yellow/red on the menubar icon.
 
 qmd:
@@ -713,7 +713,7 @@ ui:
 
 logs:
   # Where action stdout/stderr is captured
-  directory: ~/.cache/swiftbar-qmd/logs
+  directory: ~/.cache/qmd-swiftbar/logs
   # Max log files to retain per action type before rotation
   retain_per_action: 10
 ```
@@ -752,8 +752,8 @@ Per §3.2, every poll constructs a `CurrentState` from four sources:
 
 1. **SDK reads** — `listCollections()` and `getStatus()` from `npm:@tobilu/qmd`. These open a read-only handle to the sqlite index. The qmd MCP daemon's writer (if running) holds its own write handle; sqlite's WAL mode supports concurrent readers without contention.
 2. **HTTP probe** — `GET <daemon_url>/health` with 5s timeout. Falls back to "stopped" on connection refused, "unresponsive" on timeout.
-3. **PID file scan** — list `~/.cache/swiftbar-qmd/jobs/*.pid` and check each PID via `Deno.kill(pid, 'SIGCONT')`.
-4. **Failures file** — read `~/.cache/swiftbar-qmd/recent-failures.json`.
+3. **PID file scan** — list `~/.cache/qmd-swiftbar/jobs/*.pid` and check each PID via `Deno.kill(pid, 'SIGCONT')`.
+4. **Failures file** — read `~/.cache/qmd-swiftbar/recent-failures.json`.
 
 ### 8.2 Derived metadata
 
@@ -887,7 +887,7 @@ SwiftBar reads from stdout. The first non-empty line is the menubar item itself;
 │   📄 Show last output                │  ← shown only if log exists
 │ ───                                  │
 │   ⚙ Preferences…                ⌘,   │
-│   ⓘ About swiftbar-qmd               │
+│   ⓘ About qmd-swiftbar               │
 └─────────────────────────────────────┘
 ```
 
@@ -914,7 +914,7 @@ When `state.inFlightJobs` contains entries, the menu mutates:
 If the current poll's `state.collections` is empty *and* `state.status.error` is set, the menu degrades to the last-known snapshot with these modifications:
 
 - A header row at top: `⚠ Status read failed — using last poll (Nm ago)` (red colour, disabled).
-- A footer row in Global actions: `Show last error | bash="open" param1="-t" param2=$HOME/.cache/swiftbar-qmd/error.log`.
+- A footer row in Global actions: `Show last error | bash="open" param1="-t" param2=$HOME/.cache/qmd-swiftbar/error.log`.
 - Icon stays at the tier the snapshot last computed; on third consecutive failure, escalate to red.
 
 ---
@@ -950,7 +950,7 @@ For `force-reembed-collection` and `cleanup`:
 
 ```bash
 osascript -e 'display dialog "Force re-embed all chunks in <name>? This will take several minutes." \
-  with title "swiftbar-qmd" buttons {"Cancel", "Re-embed"} default button "Cancel" with icon caution'
+  with title "qmd-swiftbar" buttons {"Cancel", "Re-embed"} default button "Cancel" with icon caution'
 ```
 
 The action only proceeds if `button returned` is `"Re-embed"` (or equivalent). If the dialog returns `Cancel` or times out (60s), exit silently.
@@ -970,8 +970,8 @@ qmd not detected | size=10 color=#8a8a8e shell=
    Install qmd from github.com/tobi/qmd | bash="open" param1="https://github.com/tobi/qmd#installation" terminal=false
    Re-check now | bash="<plugin-path>" param1="--action" param2="recheck" terminal=false refresh=true
 ---
-   Preferences… | bash="open" param1="-t" param2=$HOME/.config/swiftbar-qmd/config.yml terminal=false
-   About swiftbar-qmd | bash="open" param1="https://github.com/ggfevans/swiftbar-qmd" terminal=false
+   Preferences… | bash="open" param1="-t" param2=$HOME/.config/qmd-swiftbar/config.yml terminal=false
+   About qmd-swiftbar | bash="open" param1="https://github.com/ggfevans/qmd-swiftbar" terminal=false
 ```
 
 ### 12.2 `no-collections` — qmd installed but no collections registered
@@ -986,7 +986,7 @@ No collections configured | size=10 color=#8a8a8e shell=
    Re-check now | …
 ---
    Preferences… | …
-   About swiftbar-qmd | …
+   About qmd-swiftbar | …
 ```
 
 ### 12.3 `empty-index` — collections registered, zero docs in any of them
@@ -1169,10 +1169,10 @@ Maximum 3 notifications per poll cycle. If more events are pending, render the f
 
 ## 15. State persistence
 
-All persistent state lives under `~/.cache/swiftbar-qmd/`. Directory layout:
+All persistent state lives under `~/.cache/qmd-swiftbar/`. Directory layout:
 
 ```
-~/.cache/swiftbar-qmd/
+~/.cache/qmd-swiftbar/
 ├── last-poll.json           # Snapshot of most recent poll (~5 KB)
 ├── recent-failures.json     # Rolling log of recent maintenance op failures (~2 KB)
 ├── error.log                # Internal plugin errors (rotates at 1 MB)
@@ -1217,7 +1217,7 @@ All persistent state lives under `~/.cache/swiftbar-qmd/`. Directory layout:
       "action": "update-all",
       "failedAt": "2026-05-17T10:30:00.000Z",
       "exitCode": 1,
-      "logPath": "/Users/g/.cache/swiftbar-qmd/logs/update-all-20260517T103000.log"
+      "logPath": "/Users/g/.cache/qmd-swiftbar/logs/update-all-20260517T103000.log"
     }
   ],
   "computedTier": "amber",
@@ -1244,7 +1244,7 @@ Array of `FailureRecord`, sorted newest-first, capped at 50 entries. Entries old
   "pid": 12345,
   "startedAt": "2026-05-17T12:30:00.000Z",
   "command": ["qmd", "update"],
-  "logPath": "/Users/g/.cache/swiftbar-qmd/logs/update-all-20260517T123000.log"
+  "logPath": "/Users/g/.cache/qmd-swiftbar/logs/update-all-20260517T123000.log"
 }
 ```
 
@@ -1336,7 +1336,7 @@ try {
 
 The implementer should explicitly handle:
 
-1. **Concurrent polls** — SwiftBar may re-invoke the script if the previous one is slow. Acquire a poll lock (`~/.cache/swiftbar-qmd/poll.lock`) for the duration of a poll; if locked, exit silently.
+1. **Concurrent polls** — SwiftBar may re-invoke the script if the previous one is slow. Acquire a poll lock (`~/.cache/qmd-swiftbar/poll.lock`) for the duration of a poll; if locked, exit silently.
 2. **Clock skew** — `lastModified` from the SDK may be in the future relative to the local clock. Treat negative durations as zero.
 3. **System sleep / wake** — `polledAt` gaps of > 60s should not produce spurious "drifting" rollups; check elapsed wall-clock time and skip transition detection if the gap exceeds 2x poll interval.
 4. **Locale / time zones** — render all times in the user's local TZ; persist as UTC ISO strings.
@@ -1381,7 +1381,7 @@ Rotation: when `error.log` exceeds 1 MB, rename to `error.log.1` (overwriting an
 
 ### 18.2 Action logs
 
-One log file per action invocation at `~/.cache/swiftbar-qmd/logs/<action>-<ISO timestamp>.log`. Contents are raw qmd stdout+stderr plus the trailing `EXIT_CODE=N` line.
+One log file per action invocation at `~/.cache/qmd-swiftbar/logs/<action>-<ISO timestamp>.log`. Contents are raw qmd stdout+stderr plus the trailing `EXIT_CODE=N` line.
 
 Retention: `config.logs.retain_per_action` (default 10) most-recent logs per action ID. Older logs are deleted on the poll cycle that detects them.
 
@@ -1480,12 +1480,12 @@ When intentionally changing output, regenerate snapshots with `deno test -- --up
 
 Run before tagging v1.0.0. Documented in `README.md`:
 
-1. Fresh install (delete `~/.config/swiftbar-qmd/`, delete `~/.cache/swiftbar-qmd/`, drop plugin file in SwiftBar folder, restart SwiftBar). Verify: icon appears within 30s, first-run menu shows correct state.
+1. Fresh install (delete `~/.config/qmd-swiftbar/`, delete `~/.cache/qmd-swiftbar/`, drop plugin file in SwiftBar folder, restart SwiftBar). Verify: icon appears within 30s, first-run menu shows correct state.
 2. With qmd configured and indexed: verify normal menu appears, all collections listed with correct meta.
 3. Click "Update all collections". Verify: PID file appears, menu shows "Running…" within 30s, icon goes yellow, completion within expected time, log file populated.
 4. Kill the qmd daemon externally (`qmd mcp stop` from terminal). Verify: notification fires within 30s, icon goes red, "Start MCP daemon" appears in menu.
 5. Hover a collection row, verify submenu opens to the left (since icon is right-aligned). Click "Reveal in Finder", verify path opens.
-6. Corrupt config file (`echo "garbage" > ~/.config/swiftbar-qmd/config.yml`). Verify: menu still renders, `⚠ Config error` header shown, error.log has parse error.
+6. Corrupt config file (`echo "garbage" > ~/.config/qmd-swiftbar/config.yml`). Verify: menu still renders, `⚠ Config error` header shown, error.log has parse error.
 7. Edit `freshness.amber_hours` to 1 (1 hour). Verify: within 30s, any collection with freshness > 1h goes amber and icon updates.
 8. Remove a collection's source directory (`mv` it). Verify: path-unreachable notification fires, icon red, collection row shows error.
 9. Click "Open in Obsidian" on an Obsidian-vault collection. Verify: Obsidian opens with the vault.
@@ -1557,7 +1557,7 @@ Three install paths, all sharing the same GitHub-hosted `.ts` artifact.
 
 ```bash
 mkdir -p ~/Library/Application\ Support/SwiftBar/Plugins
-curl -L https://raw.githubusercontent.com/ggfevans/swiftbar-qmd/v1.0.0/qmd.30s.ts \
+curl -L https://raw.githubusercontent.com/ggfevans/qmd-swiftbar/v1.0.0/qmd.30s.ts \
   -o ~/Library/Application\ Support/SwiftBar/Plugins/qmd.30s.ts
 chmod +x ~/Library/Application\ Support/SwiftBar/Plugins/qmd.30s.ts
 # Restart SwiftBar; the icon appears within 30 seconds.
@@ -1571,13 +1571,13 @@ chmod +x ~/Library/Application\ Support/SwiftBar/Plugins/qmd.30s.ts
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="ggfevans/swiftbar-qmd"
+REPO="ggfevans/qmd-swiftbar"
 # Default to the latest tagged release so curl-pipe-bash installs are
 # reproducible. Pass any ref (tag, branch, SHA) as the first arg to
 # override — e.g. `bash -s main` to track tip-of-tree.
 REF="${1:-v1.0.0}"
 PLUGIN_DIR="$HOME/Library/Application Support/SwiftBar/Plugins"
-CONFIG_DIR="$HOME/.config/swiftbar-qmd"
+CONFIG_DIR="$HOME/.config/qmd-swiftbar"
 
 # Preflight
 command -v deno >/dev/null || { echo "ERROR: deno not found. Install from https://deno.com/"; exit 1; }
@@ -1651,7 +1651,7 @@ Notes on the design choices (per PR #1 review D1–D4):
 One-liner usage:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ggfevans/swiftbar-qmd/v1.0.0/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ggfevans/qmd-swiftbar/v1.0.0/install.sh | bash
 ```
 
 ### 21.3 Path D — SwiftBar "Install from URL"
@@ -1880,7 +1880,7 @@ Daemon running | size=12 color=#1d1d1f shell=
 
 Some menu items only appear under certain conditions:
 
-- **Show last output** — only when `~/.cache/swiftbar-qmd/logs/` has at least one file
+- **Show last output** — only when `~/.cache/qmd-swiftbar/logs/` has at least one file
 - **Open in Obsidian** — only when `<collection-path>/.obsidian/` exists
 - **Start MCP daemon** vs **Stop MCP daemon** — mutually exclusive based on `daemon.status`
 

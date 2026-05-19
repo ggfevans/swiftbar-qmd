@@ -119,13 +119,13 @@ failure before committing.
 ## Project structure
 
 ```
-swiftbar-qmd/
+qmd-swiftbar/
 ├── qmd.30s.ts              # SwiftBar entry point (interval encoded in filename)
 ├── lib/                    # Internal modules; see SPEC §5.2 for contracts
 ├── tests/                  # Unit + snapshot tests
 ├── deno.json               # Tasks, import map, lint/fmt config
 ├── deno.lock               # Committed
-├── config.example.yml      # Annotated example config; seeded to ~/.config/swiftbar-qmd/config.yml on first run
+├── config.example.yml      # Annotated example config; seeded to ~/.config/qmd-swiftbar/config.yml on first run
 ├── install.sh              # Curl-installer script
 ├── docs/
 │   ├── mockup.svg          # Visual mockup used in README
@@ -163,7 +163,7 @@ Things to avoid, in rough order of severity:
    so the plugin works whether or not the daemon is running (see `DECISIONS.md`
    D12).
 6. **Do not write to `~/.cache/qmd/`.** That's qmd's territory. Our writes go to
-   `~/.cache/swiftbar-qmd/` exclusively.
+   `~/.cache/qmd-swiftbar/` exclusively.
 7. **Do not let the poll cycle throw.** Wrap every read in `withTimeout` and
    try/catch; fall back to the last good snapshot. The plugin should never show
    a blank icon or a crash dialog.

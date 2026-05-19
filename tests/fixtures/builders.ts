@@ -176,7 +176,7 @@ export function buildInFlightState(): CurrentState {
     pid: 9999,
     startedAt,
     command: ["qmd", "update"],
-    logPath: "/tmp/swiftbar-qmd-snapshot/update-all.log",
+    logPath: "/tmp/qmd-swiftbar-snapshot/update-all.log",
   };
   state.inFlightJobs = [job];
   return state;

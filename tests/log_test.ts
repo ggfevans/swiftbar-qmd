@@ -7,24 +7,24 @@ import { logError, logInfo } from "../lib/log.ts";
 /**
  * Run a test body with a fresh CACHE_DIR override. Mirrors the helper
  * in `persistence_test.ts` so log-write tests pick up the same
- * SWIFTBAR_QMD_CACHE_DIR resolution path that production uses.
+ * QMD_SWIFTBAR_CACHE_DIR resolution path that production uses.
  */
 async function withCacheDir<T>(
   fn: (dir: string) => Promise<T>,
 ): Promise<T> {
   const dir = await Deno.makeTempDir({
     dir: "/tmp",
-    prefix: "swiftbar-qmd-log-",
+    prefix: "qmd-swiftbar-log-",
   });
-  const prev = Deno.env.get("SWIFTBAR_QMD_CACHE_DIR");
-  Deno.env.set("SWIFTBAR_QMD_CACHE_DIR", dir);
+  const prev = Deno.env.get("QMD_SWIFTBAR_CACHE_DIR");
+  Deno.env.set("QMD_SWIFTBAR_CACHE_DIR", dir);
   try {
     return await fn(dir);
   } finally {
     if (prev === undefined) {
-      Deno.env.delete("SWIFTBAR_QMD_CACHE_DIR");
+      Deno.env.delete("QMD_SWIFTBAR_CACHE_DIR");
     } else {
-      Deno.env.set("SWIFTBAR_QMD_CACHE_DIR", prev);
+      Deno.env.set("QMD_SWIFTBAR_CACHE_DIR", prev);
     }
     await Deno.remove(dir, { recursive: true });
   }
@@ -32,9 +32,9 @@ async function withCacheDir<T>(
 
 // ─── Tests ─────────────────────────────────────────────────────
 
-Deno.test("logError honours SWIFTBAR_QMD_CACHE_DIR (PR #1 A6)", async () => {
+Deno.test("logError honours QMD_SWIFTBAR_CACHE_DIR (PR #1 A6)", async () => {
   // Regression: lib/log.ts previously hardcoded
-  // `${HOME}/.cache/swiftbar-qmd/error.log` at module load. Every
+  // `${HOME}/.cache/qmd-swiftbar/error.log` at module load. Every
   // other module routes through `cacheDir()` which honours the env
   // override, so under override `logError` wrote to one tree while
   // the UI's "Show last error" row opened a different tree.
@@ -51,7 +51,7 @@ Deno.test("logError honours SWIFTBAR_QMD_CACHE_DIR (PR #1 A6)", async () => {
   });
 });
 
-Deno.test("logInfo honours SWIFTBAR_QMD_CACHE_DIR (PR #1 A6)", async () => {
+Deno.test("logInfo honours QMD_SWIFTBAR_CACHE_DIR (PR #1 A6)", async () => {
   await withCacheDir(async (dir) => {
     await logInfo("test", "info-message");
 
