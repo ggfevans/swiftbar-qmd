@@ -3,10 +3,11 @@
 All notable changes follow [Keep a Changelog](https://keepachangelog.com/) and
 this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [1.0.0] — 2026-05-17
+## [Unreleased]
 
-First public release. Implements the full v1 specification documented in
-[`docs/planning/SPEC.md`](docs/planning/SPEC.md).
+Implements the full v1 specification documented in
+[`docs/planning/SPEC.md`](docs/planning/SPEC.md). Will be tagged as v1.0.0
+when ready for release.
 
 ### Added
 
