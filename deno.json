@@ -20,7 +20,7 @@
     "exclude": ["docs/", ".github/", "coverage/"]
   },
   "imports": {
-    "@std/yaml": "jsr:@std/yaml@^1",
+    "@std/yaml": "jsr:@std/yaml@^1.1.0",
     "@std/path": "jsr:@std/path@^1",
     "@std/fs": "jsr:@std/fs@^1",
     "@std/testing": "jsr:@std/testing@^1",
